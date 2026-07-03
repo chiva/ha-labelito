@@ -1,0 +1,105 @@
+print:
+  name: Print label
+  description: >-
+    Print a physical label on the Brother QL printer via Labelito. The label layout comes from a
+    named Labelito template (see the Labelito web UI or GET /templates for the catalog); the
+    template's placeholders are filled from the "fields" object. The template name is validated
+    against the live template list before printing, and a mismatch between the template's media
+    and the loaded roll is rejected by the printer service with a clear error. Optionally returns
+    a response with the job id and whether it was printed or a dry run.
+  fields:
+    template:
+      name: Template
+      description: >-
+        Name of the Labelito template to print, for example "pantry" or "freezer-dated". Must be
+        one of the templates the Labelito service currently serves; unknown names fail with the
+        list of valid templates.
+      required: true
+      example: pantry
+      selector:
+        text:
+    fields:
+      name: Fields
+      description: >-
+        Values for the template's placeholders, as a mapping of field name to value. Each
+        template declares required and optional fields; missing required fields are rejected.
+      example: '{"title": "Tomato soup", "subtitle": "Frozen 2026-07-01"}'
+      selector:
+        object:
+    copies:
+      name: Copies
+      description: Number of identical copies to print (1-10).
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+    dry_run:
+      name: Dry run
+      description: >-
+        Render and validate the label without sending anything to the printer. Useful for testing
+        templates and field values.
+      default: false
+      selector:
+        boolean:
+    language:
+      name: Language
+      description: >-
+        BCP-47 language tag (for example "en" or "es") for the label's translated chrome and date
+        formatting. Defaults to the Labelito server's configured language.
+      example: en
+      selector:
+        text:
+    cut:
+      name: Cut
+      description: Cut the label after printing. Defaults to true on the server.
+      selector:
+        boolean:
+    red:
+      name: Red
+      description: >-
+        Two-color (red/black) printing for supported printers and DK-2225x black/red media.
+        Leave unset to inherit the server default.
+      selector:
+        boolean:
+    dither:
+      name: Dither
+      description: >-
+        Approximate greys with Floyd-Steinberg dithering. Leave unset to inherit the server
+        default.
+      selector:
+        boolean:
+    idempotency_key:
+      name: Idempotency key
+      description: >-
+        Optional stable key that lets Labelito recognise a replayed request. Pass a fixed value
+        (unique per logical label) when an automation may retry after an ambiguous failure — a
+        lost response or timeout after the label was already sent — so the same label is not
+        printed twice. Leave unset for a fresh key per call.
+      example: pantry-tomato-soup-2026-07-01
+      selector:
+        text:
+    config_entry_id:
+      name: Labelito instance
+      description: >-
+        Which configured Labelito service to print on. Only needed when more than one is
+        configured.
+      selector:
+        config_entry:
+          integration: labelito
+reprint_last:
+  name: Reprint last label
+  description: >-
+    Print the most recent label that was printed through Home Assistant again, exactly as it came
+    out the first time (same template, fields, and rendering options). Fails if nothing has been
+    printed through Home Assistant since it last restarted.
+  fields:
+    config_entry_id:
+      name: Labelito instance
+      description: >-
+        Which configured Labelito service to reprint on. Only needed when more than one is
+        configured.
+      selector:
+        config_entry:
+          integration: labelito

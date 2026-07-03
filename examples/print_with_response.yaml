@@ -1,0 +1,23 @@
+# Print a pantry label from an input_text helper and notify with the job id.
+# Demonstrates response_variable on labelito.print ({job_id, status}).
+alias: "Pantry label with confirmation"
+triggers:
+  - trigger: state
+    entity_id: input_boolean.print_pantry_label
+    to: "on"
+actions:
+  - action: labelito.print
+    data:
+      template: pantry
+      fields:
+        title: "{{ states('input_text.pantry_item') }}"
+      copies: 1
+    response_variable: print_result
+  - action: notify.persistent_notification
+    data:
+      title: "Label printed"
+      message: "Job {{ print_result.job_id }} finished with status {{ print_result.status }}."
+  - action: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.print_pantry_label
+mode: single

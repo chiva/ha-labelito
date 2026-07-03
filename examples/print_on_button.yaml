@@ -1,0 +1,16 @@
+# Print a dated freezer label when a Zigbee button is pressed.
+# The template's {{date}} token is computed server-side, so only the title is needed.
+alias: "Freezer label on button press"
+triggers:
+  - trigger: device
+    domain: zha
+    device_id: YOUR_BUTTON_DEVICE_ID
+    type: remote_button_short_press
+    subtype: button
+actions:
+  - action: labelito.print
+    data:
+      template: freezer-dated
+      fields:
+        title: "Leftovers"
+mode: single

@@ -1,0 +1,48 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      # "true" only on the push that actually publishes a release — gates the zip job.
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # release-type "simple" tracks the version in .release-please-manifest.json and syncs it
+          # into manifest.json via the extra-files rule in release-please-config.json.
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # HACS installs from the GitHub Release's attached zip (hacs.json sets zip_release/filename), so
+  # build and attach it in the same run release-please publishes the release.
+  zip:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Build integration zip
+        run: |
+          cd custom_components/labelito
+          zip -r labelito.zip . -x '*.pyc' -x '*__pycache__*'
+
+      - name: Upload zip to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" custom_components/labelito/labelito.zip --clobber

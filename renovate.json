@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "enabledManagers": ["github-actions", "pip_requirements"],
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "description": "Group non-major bumps into a single PR.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major dependencies"
+    },
+    {
+      "description": "pytest-homeassistant-custom-component is welded to one HA core version — surface it on its own so the HA bump is reviewed deliberately.",
+      "matchPackageNames": ["pytest-homeassistant-custom-component"],
+      "groupName": "home-assistant test pin"
+    }
+  ]
+}

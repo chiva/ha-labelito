@@ -1,0 +1,19 @@
+# Copy this file to <config>/custom_sentences/en/labelito.yaml
+# (integrations cannot ship custom sentences; Home Assistant only loads them from config).
+language: "en"
+intents:
+  LabelitoPrint:
+    data:
+      - sentences:
+          - "print [a] {template} label [for] {text}"
+          - "print [a] {template} label [that says] {text}"
+          - "make [a] {template} label [for] {text}"
+          - "make [a] {template} label [that says] {text}"
+      - sentences:
+          - "print [a] {template} label"
+          - "make [a] {template} label"
+lists:
+  template:
+    wildcard: true
+  text:
+    wildcard: true

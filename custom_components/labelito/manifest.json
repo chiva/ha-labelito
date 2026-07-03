@@ -1,0 +1,12 @@
+{
+  "domain": "labelito",
+  "name": "Labelito",
+  "codeowners": ["@chiva"],
+  "config_flow": true,
+  "documentation": "https://github.com/chiva/ha-labelito",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/chiva/ha-labelito/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

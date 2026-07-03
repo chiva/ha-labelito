@@ -1,0 +1,36 @@
+# Tooling configuration for the Labelito Home Assistant integration. This is a HACS
+# custom_components integration, not a distributable package, so there is no [build-system] or
+# [project] table — the installable version lives in custom_components/labelito/manifest.json and
+# is bumped by release-please.
+
+[tool.ruff]
+# Home Assistant 2026.7 requires Python >=3.14.2, so the integration targets 3.14.
+target-version = "py314"
+line-length = 100
+src = ["custom_components", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "PTH", "RUF", "ASYNC", "SIM"]
+ignore = [
+    "E501",
+    # api.py passes an aiohttp.ClientTimeout through to session.request — the correct aiohttp
+    # idiom, not a self-implemented timeout that ASYNC109 is meant to catch.
+    "ASYNC109",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests lean on fixtures and long descriptive assertions.
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = ["-v", "--tb=short"]

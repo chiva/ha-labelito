@@ -1,0 +1,160 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Labelito",
+        "description": "Enter the address of your Labelito label printing service.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "api_token": "API token"
+        },
+        "data_description": {
+          "host": "Hostname or IP address where Labelito is running.",
+          "port": "Labelito HTTP port (default 8765).",
+          "api_token": "The API_TOKEN configured on the Labelito service. Leave empty if Labelito runs with ALLOW_UNAUTHENTICATED=true."
+        }
+      },
+      "hassio_confirm": {
+        "title": "Labelito add-on discovered",
+        "description": "Do you want to add the Labelito add-on ({host}) to Home Assistant?"
+      },
+      "reauth_confirm": {
+        "title": "Update Labelito API token",
+        "description": "The Labelito service rejected the stored API token. Enter the current one.",
+        "data": {
+          "api_token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Labelito service.",
+      "invalid_auth": "The Labelito service rejected the API token.",
+      "unsupported_api_version": "The Labelito service speaks an unsupported API version. Update this integration or the Labelito service.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This Labelito service is already configured.",
+      "cannot_connect": "Failed to connect to the discovered Labelito add-on.",
+      "invalid_auth": "The discovered Labelito add-on rejected the API token.",
+      "unsupported_api_version": "The discovered Labelito add-on speaks an unsupported API version.",
+      "reauth_successful": "The API token was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Labelito options",
+        "description": "Printer status poll interval in seconds. The default is {network_default} s for network printers and {usb_default} s for USB (a USB status read briefly claims the printer).",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "printer_state": {
+        "name": "Printer state",
+        "state": {
+          "off": "Off",
+          "idle": "Idle",
+          "printing": "Printing",
+          "error": "Error"
+        }
+      },
+      "media": {
+        "name": "Loaded media"
+      },
+      "labels_printed": {
+        "name": "Labels printed"
+      },
+      "console_text": {
+        "name": "Printer display"
+      },
+      "version": {
+        "name": "Labelito version"
+      },
+      "template_count": {
+        "name": "Templates"
+      },
+      "transport": {
+        "name": "Transport"
+      },
+      "printer_model": {
+        "name": "Printer model"
+      }
+    },
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Printer connectivity"
+      },
+      "problem": {
+        "name": "Printer problem"
+      }
+    },
+    "button": {
+      "reprint_last": {
+        "name": "Reprint last label"
+      }
+    }
+  },
+  "services": {
+    "print": {
+      "name": "Print label",
+      "description": "Print a physical label on the Brother QL printer via Labelito, using a named template and its field values.",
+      "fields": {
+        "template": {
+          "name": "Template",
+          "description": "Name of the Labelito template to print, for example \"pantry\". Validated against the live template list."
+        },
+        "fields": {
+          "name": "Fields",
+          "description": "Values for the template's placeholders, as a mapping of field name to value."
+        },
+        "copies": {
+          "name": "Copies",
+          "description": "Number of identical copies to print (1-10)."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Render and validate without sending anything to the printer."
+        },
+        "language": {
+          "name": "Language",
+          "description": "Language tag for the label's translated chrome and date formatting."
+        },
+        "cut": {
+          "name": "Cut",
+          "description": "Cut the label after printing. Defaults to true on the server."
+        },
+        "red": {
+          "name": "Red",
+          "description": "Two-color (red/black) printing on supported printers and media."
+        },
+        "dither": {
+          "name": "Dither",
+          "description": "Approximate greys with Floyd-Steinberg dithering."
+        },
+        "idempotency_key": {
+          "name": "Idempotency key",
+          "description": "Optional stable key so Labelito can dedupe a retried request and avoid a double print. Leave unset for a fresh key per call."
+        },
+        "config_entry_id": {
+          "name": "Labelito instance",
+          "description": "Which configured Labelito service to print on. Only needed with multiple instances."
+        }
+      }
+    },
+    "reprint_last": {
+      "name": "Reprint last label",
+      "description": "Print the most recent label printed through Home Assistant again, exactly as the first time.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Labelito instance",
+          "description": "Which configured Labelito service to reprint on. Only needed with multiple instances."
+        }
+      }
+    }
+  }
+}

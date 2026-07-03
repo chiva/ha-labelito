@@ -1,0 +1,19 @@
+# Copia este archivo a <config>/custom_sentences/es/labelito.yaml
+# (las integraciones no pueden incluir frases personalizadas; Home Assistant solo las carga desde config).
+language: "es"
+intents:
+  LabelitoPrint:
+    data:
+      - sentences:
+          - "imprime una etiqueta [de] {template} para {text}"
+          - "imprime una etiqueta [de] {template} que diga {text}"
+          - "haz una etiqueta [de] {template} para {text}"
+          - "haz una etiqueta [de] {template} que diga {text}"
+      - sentences:
+          - "imprime una etiqueta [de] {template}"
+          - "haz una etiqueta [de] {template}"
+lists:
+  template:
+    wildcard: true
+  text:
+    wildcard: true

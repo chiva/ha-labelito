@@ -1,0 +1,7 @@
+{
+  "name": "Labelito",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "labelito.zip",
+  "homeassistant": "2026.7.0"
+}
