@@ -6,7 +6,6 @@ on:
     paths: ["**.py", "requirements_test.txt", ".github/workflows/test.yml"]
   pull_request:
     branches: [main]
-    paths: ["**.py", "requirements_test.txt", ".github/workflows/test.yml"]
 
 permissions:
   contents: read
