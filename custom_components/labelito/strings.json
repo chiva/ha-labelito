@@ -2,49 +2,49 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Labelito",
-        "description": "Enter the address of your Labelito label printing service.",
+        "title": "Connect to labelito",
+        "description": "Enter the address of your labelito label printing service.",
         "data": {
           "host": "Host",
           "port": "Port",
           "api_token": "API token"
         },
         "data_description": {
-          "host": "Hostname or IP address where Labelito is running.",
-          "port": "Labelito HTTP port (default 8765).",
-          "api_token": "The API_TOKEN configured on the Labelito service. Leave empty if Labelito runs with ALLOW_UNAUTHENTICATED=true."
+          "host": "Hostname or IP address where labelito is running.",
+          "port": "labelito HTTP port (default 8765).",
+          "api_token": "The API_TOKEN configured on the labelito service. Leave empty if labelito runs with ALLOW_UNAUTHENTICATED=true."
         }
       },
       "hassio_confirm": {
-        "title": "Labelito add-on discovered",
-        "description": "Do you want to add the Labelito add-on ({host}) to Home Assistant?"
+        "title": "labelito add-on discovered",
+        "description": "Do you want to add the labelito add-on ({host}) to Home Assistant?"
       },
       "reauth_confirm": {
-        "title": "Update Labelito API token",
-        "description": "The Labelito service rejected the stored API token. Enter the current one.",
+        "title": "Update labelito API token",
+        "description": "The labelito service rejected the stored API token. Enter the current one.",
         "data": {
           "api_token": "API token"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the Labelito service.",
-      "invalid_auth": "The Labelito service rejected the API token.",
-      "unsupported_api_version": "The Labelito service speaks an unsupported API version. Update this integration or the Labelito service.",
+      "cannot_connect": "Failed to connect to the labelito service.",
+      "invalid_auth": "The labelito service rejected the API token.",
+      "unsupported_api_version": "The labelito service speaks an unsupported API version. Update this integration or the labelito service.",
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This Labelito service is already configured.",
-      "cannot_connect": "Failed to connect to the discovered Labelito add-on.",
-      "invalid_auth": "The discovered Labelito add-on rejected the API token.",
-      "unsupported_api_version": "The discovered Labelito add-on speaks an unsupported API version.",
+      "already_configured": "This labelito service is already configured.",
+      "cannot_connect": "Failed to connect to the discovered labelito add-on.",
+      "invalid_auth": "The discovered labelito add-on rejected the API token.",
+      "unsupported_api_version": "The discovered labelito add-on speaks an unsupported API version.",
       "reauth_successful": "The API token was updated."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Labelito options",
+        "title": "labelito options",
         "description": "Printer status poll interval in seconds. The default is {network_default} s for network printers and {usb_default} s for USB (a USB status read briefly claims the printer).",
         "data": {
           "scan_interval": "Poll interval (seconds)"
@@ -73,7 +73,7 @@
         "name": "Printer display"
       },
       "version": {
-        "name": "Labelito version"
+        "name": "labelito version"
       },
       "template_count": {
         "name": "Templates"
@@ -102,11 +102,11 @@
   "services": {
     "print": {
       "name": "Print label",
-      "description": "Print a physical label on the Brother QL printer via Labelito, using a named template and its field values.",
+      "description": "Print a physical label on the Brother QL printer via labelito, using a named template and its field values.",
       "fields": {
         "template": {
           "name": "Template",
-          "description": "Name of the Labelito template to print, for example \"pantry\". Validated against the live template list."
+          "description": "Name of the labelito template to print, for example \"pantry\". Validated against the live template list."
         },
         "fields": {
           "name": "Fields",
@@ -138,11 +138,11 @@
         },
         "idempotency_key": {
           "name": "Idempotency key",
-          "description": "Optional stable key so Labelito can dedupe a retried request and avoid a double print. Leave unset for a fresh key per call."
+          "description": "Optional stable key so labelito can dedupe a retried request and avoid a double print. Leave unset for a fresh key per call."
         },
         "config_entry_id": {
-          "name": "Labelito instance",
-          "description": "Which configured Labelito service to print on. Only needed with multiple instances."
+          "name": "labelito instance",
+          "description": "Which configured labelito service to print on. Only needed with multiple instances."
         }
       }
     },
@@ -151,8 +151,8 @@
       "description": "Print the most recent label printed through Home Assistant again, exactly as the first time.",
       "fields": {
         "config_entry_id": {
-          "name": "Labelito instance",
-          "description": "Which configured Labelito service to reprint on. Only needed with multiple instances."
+          "name": "labelito instance",
+          "description": "Which configured labelito service to reprint on. Only needed with multiple instances."
         }
       }
     }

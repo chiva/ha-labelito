@@ -1,8 +1,8 @@
 print:
   name: Print label
   description: >-
-    Print a physical label on the Brother QL printer via Labelito. The label layout comes from a
-    named Labelito template (see the Labelito web UI or GET /templates for the catalog); the
+    Print a physical label on the Brother QL printer via labelito. The label layout comes from a
+    named labelito template (see the labelito web UI or GET /templates for the catalog); the
     template's placeholders are filled from the "fields" object. The template name is validated
     against the live template list before printing, and a mismatch between the template's media
     and the loaded roll is rejected by the printer service with a clear error. Optionally returns
@@ -11,8 +11,8 @@ print:
     template:
       name: Template
       description: >-
-        Name of the Labelito template to print, for example "pantry" or "freezer-dated". Must be
-        one of the templates the Labelito service currently serves; unknown names fail with the
+        Name of the labelito template to print, for example "pantry" or "freezer-dated". Must be
+        one of the templates the labelito service currently serves; unknown names fail with the
         list of valid templates.
       required: true
       example: pantry
@@ -47,7 +47,7 @@ print:
       name: Language
       description: >-
         BCP-47 language tag (for example "en" or "es") for the label's translated chrome and date
-        formatting. Defaults to the Labelito server's configured language.
+        formatting. Defaults to the labelito server's configured language.
       example: en
       selector:
         text:
@@ -73,7 +73,7 @@ print:
     idempotency_key:
       name: Idempotency key
       description: >-
-        Optional stable key that lets Labelito recognise a replayed request. Pass a fixed value
+        Optional stable key that lets labelito recognise a replayed request. Pass a fixed value
         (unique per logical label) when an automation may retry after an ambiguous failure — a
         lost response or timeout after the label was already sent — so the same label is not
         printed twice. Leave unset for a fresh key per call.
@@ -81,9 +81,9 @@ print:
       selector:
         text:
     config_entry_id:
-      name: Labelito instance
+      name: labelito instance
       description: >-
-        Which configured Labelito service to print on. Only needed when more than one is
+        Which configured labelito service to print on. Only needed when more than one is
         configured.
       selector:
         config_entry:
@@ -96,9 +96,9 @@ reprint_last:
     printed through Home Assistant since it last restarted.
   fields:
     config_entry_id:
-      name: Labelito instance
+      name: labelito instance
       description: >-
-        Which configured Labelito service to reprint on. Only needed when more than one is
+        Which configured labelito service to reprint on. Only needed when more than one is
         configured.
       selector:
         config_entry:

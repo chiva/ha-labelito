@@ -1,4 +1,4 @@
-"""Global fixtures for the Labelito integration tests."""
+"""Global fixtures for the labelito integration tests."""
 
 from __future__ import annotations
 
@@ -73,5 +73,5 @@ def mock_config_entry() -> MockConfigEntry:
         domain=DOMAIN,
         data=MOCK_CONFIG,
         unique_id=MOCK_SERIAL,
-        title="Labelito (192.0.2.10)",
+        title="labelito (192.0.2.10)",
     )

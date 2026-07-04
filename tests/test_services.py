@@ -160,7 +160,7 @@ async def test_reprint_404_clears_stale_job(
 
 
 async def test_resolve_coordinator_none_loaded(hass: HomeAssistant) -> None:
-    with pytest.raises(ServiceValidationError, match="No Labelito printer"):
+    with pytest.raises(ServiceValidationError, match="No labelito printer"):
         resolve_coordinator(hass, None)
 
 

@@ -17,7 +17,7 @@ from .const import MOCK_HEALTH, MOCK_SERIAL
 
 
 def _sensor_state(hass: HomeAssistant, registry: er.EntityRegistry, key: str):
-    """Resolve a Labelito sensor by its unique-id key and return its state."""
+    """Resolve a labelito sensor by its unique-id key and return its state."""
     entity_id = registry.async_get_entity_id("sensor", "labelito", f"{MOCK_SERIAL}_{key}")
     assert entity_id is not None, f"no sensor entity for key {key!r}"
     return hass.states.get(entity_id)

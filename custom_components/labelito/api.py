@@ -48,7 +48,7 @@ class LabelitoApiError(LabelitoError):
     """
 
     def __init__(self, status: int, detail: str | dict[str, Any] | list[Any]) -> None:
-        super().__init__(f"Labelito API error {status}: {detail}")
+        super().__init__(f"labelito API error {status}: {detail}")
         self.status = status
         self.detail = detail
 

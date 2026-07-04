@@ -2,49 +2,49 @@
   "config": {
     "step": {
       "user": {
-        "title": "Conectar con Labelito",
-        "description": "Introduce la dirección de tu servicio de impresión de etiquetas Labelito.",
+        "title": "Conectar con labelito",
+        "description": "Introduce la dirección de tu servicio de impresión de etiquetas labelito.",
         "data": {
           "host": "Host",
           "port": "Puerto",
           "api_token": "Token de API"
         },
         "data_description": {
-          "host": "Nombre de host o dirección IP donde se ejecuta Labelito.",
-          "port": "Puerto HTTP de Labelito (por defecto 8765).",
-          "api_token": "El API_TOKEN configurado en el servicio Labelito. Déjalo vacío si Labelito se ejecuta con ALLOW_UNAUTHENTICATED=true."
+          "host": "Nombre de host o dirección IP donde se ejecuta labelito.",
+          "port": "Puerto HTTP de labelito (por defecto 8765).",
+          "api_token": "El API_TOKEN configurado en el servicio labelito. Déjalo vacío si labelito se ejecuta con ALLOW_UNAUTHENTICATED=true."
         }
       },
       "hassio_confirm": {
-        "title": "Complemento Labelito descubierto",
-        "description": "¿Quieres añadir el complemento Labelito ({host}) a Home Assistant?"
+        "title": "Complemento labelito descubierto",
+        "description": "¿Quieres añadir el complemento labelito ({host}) a Home Assistant?"
       },
       "reauth_confirm": {
-        "title": "Actualizar el token de API de Labelito",
-        "description": "El servicio Labelito rechazó el token de API almacenado. Introduce el actual.",
+        "title": "Actualizar el token de API de labelito",
+        "description": "El servicio labelito rechazó el token de API almacenado. Introduce el actual.",
         "data": {
           "api_token": "Token de API"
         }
       }
     },
     "error": {
-      "cannot_connect": "No se pudo conectar con el servicio Labelito.",
-      "invalid_auth": "El servicio Labelito rechazó el token de API.",
-      "unsupported_api_version": "El servicio Labelito usa una versión de API no compatible. Actualiza esta integración o el servicio Labelito.",
+      "cannot_connect": "No se pudo conectar con el servicio labelito.",
+      "invalid_auth": "El servicio labelito rechazó el token de API.",
+      "unsupported_api_version": "El servicio labelito usa una versión de API no compatible. Actualiza esta integración o el servicio labelito.",
       "unknown": "Error inesperado."
     },
     "abort": {
-      "already_configured": "Este servicio Labelito ya está configurado.",
-      "cannot_connect": "No se pudo conectar con el complemento Labelito descubierto.",
-      "invalid_auth": "El complemento Labelito descubierto rechazó el token de API.",
-      "unsupported_api_version": "El complemento Labelito descubierto usa una versión de API no compatible.",
+      "already_configured": "Este servicio labelito ya está configurado.",
+      "cannot_connect": "No se pudo conectar con el complemento labelito descubierto.",
+      "invalid_auth": "El complemento labelito descubierto rechazó el token de API.",
+      "unsupported_api_version": "El complemento labelito descubierto usa una versión de API no compatible.",
       "reauth_successful": "El token de API se actualizó."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Opciones de Labelito",
+        "title": "Opciones de labelito",
         "description": "Intervalo de sondeo del estado de la impresora en segundos. El valor por defecto es {network_default} s para impresoras de red y {usb_default} s para USB (una lectura de estado USB reclama brevemente la impresora).",
         "data": {
           "scan_interval": "Intervalo de sondeo (segundos)"
@@ -73,7 +73,7 @@
         "name": "Pantalla de la impresora"
       },
       "version": {
-        "name": "Versión de Labelito"
+        "name": "Versión de labelito"
       },
       "template_count": {
         "name": "Plantillas"
@@ -102,11 +102,11 @@
   "services": {
     "print": {
       "name": "Imprimir etiqueta",
-      "description": "Imprime una etiqueta física en la impresora Brother QL mediante Labelito, usando una plantilla con nombre y sus campos.",
+      "description": "Imprime una etiqueta física en la impresora Brother QL mediante labelito, usando una plantilla con nombre y sus campos.",
       "fields": {
         "template": {
           "name": "Plantilla",
-          "description": "Nombre de la plantilla de Labelito a imprimir, por ejemplo \"pantry\". Se valida contra la lista de plantillas en vivo."
+          "description": "Nombre de la plantilla de labelito a imprimir, por ejemplo \"pantry\". Se valida contra la lista de plantillas en vivo."
         },
         "fields": {
           "name": "Campos",
@@ -138,11 +138,11 @@
         },
         "idempotency_key": {
           "name": "Clave de idempotencia",
-          "description": "Clave estable opcional para que Labelito deduplique una solicitud reintentada y evite imprimir dos veces. Déjala vacía para generar una clave nueva en cada llamada."
+          "description": "Clave estable opcional para que labelito deduplique una solicitud reintentada y evite imprimir dos veces. Déjala vacía para generar una clave nueva en cada llamada."
         },
         "config_entry_id": {
-          "name": "Instancia de Labelito",
-          "description": "Qué servicio Labelito configurado usar. Solo necesario con varias instancias."
+          "name": "Instancia de labelito",
+          "description": "Qué servicio labelito configurado usar. Solo necesario con varias instancias."
         }
       }
     },
@@ -151,8 +151,8 @@
       "description": "Vuelve a imprimir la etiqueta más reciente impresa a través de Home Assistant, exactamente igual que la primera vez.",
       "fields": {
         "config_entry_id": {
-          "name": "Instancia de Labelito",
-          "description": "Qué servicio Labelito configurado usar. Solo necesario con varias instancias."
+          "name": "Instancia de labelito",
+          "description": "Qué servicio labelito configurado usar. Solo necesario con varias instancias."
         }
       }
     }

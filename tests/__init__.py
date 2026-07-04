@@ -1,1 +1,1 @@
-"""Tests for the Labelito Home Assistant integration."""
+"""Tests for the labelito Home Assistant integration."""

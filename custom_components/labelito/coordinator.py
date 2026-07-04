@@ -86,7 +86,7 @@ class LabelitoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except LabelitoAuthError as err:
             raise ConfigEntryAuthFailed("API token rejected by labelito") from err
         except LabelitoConnectionError as err:
-            raise UpdateFailed(f"Labelito service unreachable: {err}") from err
+            raise UpdateFailed(f"labelito service unreachable: {err}") from err
         self._maybe_refresh_templates()
         return data
 
