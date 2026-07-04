@@ -3,7 +3,6 @@ name: Test
 on:
   push:
     branches: [main]
-    paths: ["**.py", "requirements_test.txt", ".github/workflows/test.yml"]
   pull_request:
     branches: [main]
 
