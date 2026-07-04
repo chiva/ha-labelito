@@ -1,4 +1,4 @@
-# Tooling configuration for the Labelito Home Assistant integration. This is a HACS
+# Tooling configuration for the labelito Home Assistant integration. This is a HACS
 # custom_components integration, not a distributable package, so there is no [build-system] or
 # [project] table — the installable version lives in custom_components/labelito/manifest.json and
 # is bumped by release-please.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Constants for the Labelito integration."""
+"""Constants for the labelito integration."""
 
 from datetime import timedelta
 from typing import Final

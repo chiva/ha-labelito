@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Config flow for Labelito: manual setup, add-on (hassio) discovery, reauth, and options."""
+"""Config flow for labelito: manual setup, add-on (hassio) discovery, reauth, and options."""
 
 from __future__ import annotations
 
