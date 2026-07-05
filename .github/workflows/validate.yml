@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+            persist-credentials: false
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
@@ -26,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+            persist-credentials: false
       - uses: hacs/action@main
         with:
           category: integration
