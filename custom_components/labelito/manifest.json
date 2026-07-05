@@ -1,7 +1,9 @@
 {
   "domain": "labelito",
   "name": "labelito",
-  "codeowners": ["@chiva"],
+  "codeowners": [
+    "@chiva"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/chiva/ha-labelito",
   "integration_type": "device",
