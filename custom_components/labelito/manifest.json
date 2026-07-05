@@ -1,6 +1,6 @@
 {
   "domain": "labelito",
-  "name": "Labelito",
+  "name": "labelito",
   "codeowners": ["@chiva"],
   "config_flow": true,
   "documentation": "https://github.com/chiva/ha-labelito",

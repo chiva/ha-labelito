@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The Labelito integration: label printing on Brother QL printers via a labelito service."""
+"""The labelito integration: label printing on Brother QL printers via a labelito service."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LabelitoConfigEntry) -> 
     try:
         health = await client.health()
     except LabelitoConnectionError as err:
-        raise ConfigEntryNotReady(f"Labelito service unreachable: {err}") from err
+        raise ConfigEntryNotReady(f"labelito service unreachable: {err}") from err
 
     # Re-gate on every setup, not just in the config flow: the labelito server may have been
     # upgraded across a breaking API change since the entry was created.

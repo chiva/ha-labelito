@@ -79,7 +79,7 @@ SERVICE_REPRINT_LAST_SCHEMA = vol.Schema(
 
 
 def resolve_coordinator(hass: HomeAssistant, entry_id: str | None) -> LabelitoCoordinator:
-    """Return the coordinator of the targeted (or only) loaded Labelito config entry."""
+    """Return the coordinator of the targeted (or only) loaded labelito config entry."""
     loaded: list[ConfigEntry] = [
         entry
         for entry in hass.config_entries.async_entries(DOMAIN)
@@ -89,12 +89,12 @@ def resolve_coordinator(hass: HomeAssistant, entry_id: str | None) -> LabelitoCo
         for entry in loaded:
             if entry.entry_id == entry_id:
                 return entry.runtime_data
-        raise ServiceValidationError(f"No loaded Labelito config entry with id {entry_id!r}")
+        raise ServiceValidationError(f"No loaded labelito config entry with id {entry_id!r}")
     if not loaded:
-        raise ServiceValidationError("No Labelito printer is configured and loaded")
+        raise ServiceValidationError("No labelito printer is configured and loaded")
     if len(loaded) > 1:
         raise ServiceValidationError(
-            "Multiple Labelito printers are configured; pass config_entry_id to pick one"
+            "Multiple labelito printers are configured; pass config_entry_id to pick one"
         )
     return loaded[0].runtime_data
 
@@ -113,7 +113,7 @@ def _speakable_detail(detail: str | dict[str, Any] | list[Any]) -> str:
         required = detail.get("media_required")
         if loaded and required:
             return f"The loaded roll is {loaded} but the template needs {required}"
-        msg = str(detail.get("msg", "")) or "Labelito rejected the request"
+        msg = str(detail.get("msg", "")) or "labelito rejected the request"
         errors = detail.get("errors")
         if isinstance(errors, list) and errors:
             return f"{msg}: {'; '.join(str(e) for e in errors)}"
@@ -134,7 +134,7 @@ def _raise_for_api_error(err: LabelitoApiError, template_names: list[str]) -> No
         raise ServiceValidationError(message) from err
     if err.status == 503:
         raise HomeAssistantError(f"Printer unreachable or busy: {message}") from err
-    raise HomeAssistantError(f"Labelito error {err.status}: {message}") from err
+    raise HomeAssistantError(f"labelito error {err.status}: {message}") from err
 
 
 async def async_validate_template(
@@ -193,7 +193,7 @@ async def async_execute_print(
     try:
         result = await coordinator.client.print_label(request)
     except LabelitoAuthError as err:
-        raise HomeAssistantError("Labelito rejected the API token") from err
+        raise HomeAssistantError("labelito rejected the API token") from err
     except LabelitoConnectionError as err:
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:
@@ -214,7 +214,7 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
     try:
         result = await coordinator.client.reprint(job_id)
     except LabelitoAuthError as err:
-        raise HomeAssistantError("Labelito rejected the API token") from err
+        raise HomeAssistantError("labelito rejected the API token") from err
     except LabelitoConnectionError as err:
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:

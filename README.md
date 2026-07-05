@@ -1,6 +1,6 @@
-# Labelito for Home Assistant
+# labelito for Home Assistant
 
-A Home Assistant custom integration for [Labelito](https://github.com/chiva/labelito), the
+A Home Assistant custom integration for [labelito](https://github.com/chiva/labelito), the
 self-hosted label printing service for Brother QL printers. Print labels from automations, scripts,
 dashboards, and by voice through Assist.
 
@@ -9,13 +9,13 @@ dashboards, and by voice through Assist.
   catalog before anything reaches the printer.
 - **`labelito.reprint_last`** — service and button to print the last label again.
 - **Voice** — "print a pantry label for tomato soup" via Assist custom sentences.
-- **Add-on discovery** — one-click setup when Labelito runs as the
+- **Add-on discovery** — one-click setup when labelito runs as the
   [addon-labelito](https://github.com/chiva/addon-labelito) add-on.
 
-## The Labelito ecosystem
+## The labelito ecosystem
 
-Labelito is three pieces. This repo is the Home Assistant **integration** — it does not run the
-printer service itself; it talks to a Labelito service you run separately (or as the add-on).
+labelito is three pieces. This repo is the Home Assistant **integration** — it does not run the
+printer service itself; it talks to a labelito service you run separately (or as the add-on).
 
 | Project | What it is | Use it when |
 | --- | --- | --- |
@@ -25,8 +25,8 @@ printer service itself; it talks to a Labelito service you run separately (or as
 
 ## Requirements
 
-- A running Labelito service (Docker, bare metal, or the Home Assistant add-on) reachable from
-  Home Assistant, speaking Labelito API version 1.
+- A running labelito service (Docker, bare metal, or the Home Assistant add-on) reachable from
+  Home Assistant, speaking labelito API version 1.
 - Home Assistant 2026.7 or newer (it ships Python 3.14, which this integration requires).
 
 ## Installation
@@ -37,7 +37,7 @@ The integration is not (yet) in the HACS default store, so add it as a custom re
 
 1. Click the badge above, **or** open **HACS → ⋮ → Custom repositories**, paste
    `https://github.com/chiva/ha-labelito`, and pick type **Integration**.
-2. Search HACS for **Labelito**, open it, and press **Download**.
+2. Search HACS for **labelito**, open it, and press **Download**.
 3. Restart Home Assistant.
 
 Manual alternative: copy `custom_components/labelito/` into `<config>/custom_components/` and
@@ -45,12 +45,12 @@ restart.
 
 ## Configuration
 
-1. Go to **Settings → Devices & services → Add integration** and search for **Labelito**.
+1. Go to **Settings → Devices & services → Add integration** and search for **labelito**.
 2. Enter the **host**, **port** (default `8765`), and the **API token** (leave empty only if
-   Labelito runs with `ALLOW_UNAUTHENTICATED=true`).
+   labelito runs with `ALLOW_UNAUTHENTICATED=true`).
 3. Submit. The flow verifies reachability, checks the API version, and validates the token.
 
-If Labelito runs as the Home Assistant add-on, the integration is discovered automatically and
+If labelito runs as the Home Assistant add-on, the integration is discovered automatically and
 setup is a single confirmation click.
 
 **Options** (gear icon): override the printer status poll interval (default 30 s for network
@@ -79,6 +79,6 @@ Ready-to-adapt automations live in [`examples/`](examples/).
 
 ## License
 
-This integration is licensed under the [MIT License](LICENSE). Labelito itself is GPL-3.0: the
+This integration is licensed under the [MIT License](LICENSE). labelito itself is GPL-3.0: the
 integration talks to it purely over its HTTP API and vendors none of its code, so the licenses
 remain independent.

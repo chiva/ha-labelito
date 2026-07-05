@@ -1,4 +1,4 @@
-"""Tests for the Labelito config, discovery, reauth, and options flows."""
+"""Tests for the labelito config, discovery, reauth, and options flows."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ async def test_hassio_discovery_confirm(
             "port": MOCK_CONFIG[CONF_PORT],
             "api_token": MOCK_TOKEN,
         },
-        name="Labelito",
+        name="labelito",
         slug="labelito",
         uuid="abc123",
     )

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Config flow for Labelito: manual setup, add-on (hassio) discovery, reauth, and options."""
+"""Config flow for labelito: manual setup, add-on (hassio) discovery, reauth, and options."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class UnsupportedApiVersion(Exception):
 
 
 class LabelitoConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle the Labelito config flow."""
+    """Handle the labelito config flow."""
 
     VERSION = 1
 
@@ -99,7 +99,7 @@ class LabelitoConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(self._unique_id(status, host, port))
                 self._abort_if_unique_id_configured(updates={CONF_HOST: host, CONF_PORT: port})
                 return self.async_create_entry(
-                    title=f"Labelito ({host})",
+                    title=f"labelito ({host})",
                     data={CONF_HOST: host, CONF_PORT: port, CONF_API_TOKEN: api_token},
                 )
         return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors)
@@ -127,7 +127,7 @@ class LabelitoConfigFlow(ConfigFlow, domain=DOMAIN):
             updates={CONF_HOST: host, CONF_PORT: port, CONF_API_TOKEN: api_token}
         )
         self._discovery = {CONF_HOST: host, CONF_PORT: port, CONF_API_TOKEN: api_token}
-        self.context["title_placeholders"] = {"name": discovery_info.name or "Labelito"}
+        self.context["title_placeholders"] = {"name": discovery_info.name or "labelito"}
         return await self.async_step_hassio_confirm()
 
     async def async_step_hassio_confirm(
@@ -136,7 +136,7 @@ class LabelitoConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._discovery is not None
         if user_input is not None:
             return self.async_create_entry(
-                title=f"Labelito ({self._discovery[CONF_HOST]})", data=self._discovery
+                title=f"labelito ({self._discovery[CONF_HOST]})", data=self._discovery
             )
         return self.async_show_form(
             step_id="hassio_confirm",
