@@ -14,10 +14,10 @@ jobs:
     name: Pytest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           # pytest-homeassistant-custom-component is welded to one HA core version; single Python
           # version is the norm (matrixing HA versions is the meaningful axis if wanted later).
@@ -26,7 +26,7 @@ jobs:
       - run: pip install -r requirements_test.txt
       - name: Run tests
         run: pytest --cov=custom_components.labelito --cov-report=xml --cov-report=term-missing
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
