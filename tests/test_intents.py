@@ -298,6 +298,15 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
             "freezer",
             "lasagna",
         ),
+        # The connector IS inside the longer name, but the spoken text is independent of that name's
+        # tail: "regalo para ana" is template "regalo" + text "ana", NOT "regalo-para-navidad" (whose
+        # tail "navidad" does not match "ana"). Only a tail-like text ("leftover"≈"leftovers") wins.
+        (
+            "regalo para ana",
+            [{"name": "regalo"}, {"name": "regalo-para-navidad"}],
+            "regalo",
+            "ana",
+        ),
         # Step-5 substring fallback prefers the longest overlapping name over catalog order:
         # "freezer" is listed first but "freezer-dated" is the more specific match.
         (

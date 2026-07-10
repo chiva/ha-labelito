@@ -178,9 +178,10 @@ def _split_template_and_text(
        phrase**; the tokens after it are the spoken text. Highest precision, so it runs before the
        whole-utterance match — otherwise a long name plus short text ("freezer for leftovers para
        A1") keeps the whole-string ratio above the cutoff and the text is silently dropped. It is
-       overridden by the whole match (step 4) only when that name *begins with* "<prefix>
-       <connector>" — i.e. the connector sits inside the name ("freezer for leftover" →
-       "freezer-for-leftovers"), not at a text boundary ("freezer para lasagna" keeps the split).
+       overridden by the whole match (step 4) only when that name reads "<prefix> <connector>
+       <tail>" *and* the recovered text fuzzy-matches <tail> — i.e. the connector is inside the name
+       and the "text" is really a corrupted tail ("freezer for leftover" → "freezer-for-leftovers").
+       Independent text ("regalo para ana" vs "regalo-para-navidad") keeps the split and its text.
     3. Otherwise take the highest-confidence fuzzy connector split (:func:`_best_connector_split`)
        when its prefix match is strong (≥ the whole cutoff): this recovers text even when the prefix
        is an ASR/spelling variant of a multi-word name ("pantri para …", "freezer for leftover para
@@ -221,14 +222,19 @@ def _split_template_and_text(
 
     if exact_split is not None:
         template, boundary, recovered = exact_split
-        # Override the exact split only when the connector is *inside* the matched template name —
-        # i.e. the whole match's name begins with "<prefix> <connector>" ("freezer for leftover" →
-        # "freezer-for-leftovers"). A connector that merely precedes text ("freezer para lasagna"
-        # with a "freezer-lasagna" template) is a real boundary: keep the exact split and its text.
-        if whole_name is not None and (
-            whole_name == boundary or whole_name.startswith(boundary + " ")
-        ):
-            return by_normalized[whole_name], None
+        # Override the exact split only when the connector sits *inside* the matched template name:
+        # the whole match reads "<prefix> <connector> <tail>" AND the recovered text is really a
+        # (possibly ASR-corrupted) rendering of that tail — e.g. "freezer for leftover" →
+        # "freezer-for-leftovers" ("leftover" ≈ "leftovers"). When the text is independent of the
+        # tail ("regalo para ana" vs "regalo-para-navidad", "freezer para lasagna" vs
+        # "freezer-lasagna") the connector is a real boundary, so the exact split and its text stand.
+        if whole_name is not None and whole_name.startswith(boundary + " "):
+            tail = whole_name[len(boundary) + 1 :]
+            if (
+                difflib.SequenceMatcher(None, _normalize(recovered), tail).ratio()
+                >= FUZZY_MATCH_CUTOFF
+            ):
+                return by_normalized[whole_name], None
         return template, recovered
 
     # A strong fuzzy connector split beats the whole-utterance match (step 4): an ASR variant of a
