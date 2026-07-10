@@ -160,6 +160,32 @@ async def test_reprint_404_clears_stale_job(
     assert coordinator.last_job_id is None
 
 
+async def test_reprint_credits_sequence_batch_size(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # Print a 5-label sequence, then reprint it: the reprint response echoes copies=1, but the
+    # counter must credit the remembered batch size (5), and reprint must be told the count so it
+    # can scale its timeout.
+    await async_execute_print(
+        coordinator,
+        {
+            "template": "crate",
+            "fields": {},
+            "copies": 1,
+            "dry_run": False,
+            "sequence": {"count": 5},
+        },
+    )
+    assert coordinator.ha_printed_count == 5
+    assert coordinator.last_job_labels == 5
+    client.reprint = AsyncMock(
+        return_value={"job_id": "job-2", "template": "crate", "copies": 1, "dry_run": False}
+    )
+    await async_reprint_last(coordinator)
+    client.reprint.assert_awaited_once_with("job-1", 5)
+    assert coordinator.ha_printed_count == 10
+
+
 async def test_resolve_coordinator_none_loaded(hass: HomeAssistant) -> None:
     with pytest.raises(ServiceValidationError, match="No labelito printer"):
         resolve_coordinator(hass, None)

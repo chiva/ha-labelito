@@ -239,10 +239,11 @@ async def async_execute_print(
         _raise_for_api_error(err, coordinator.template_names(templates))
     coordinator.last_job_id = result[ATTR_JOB_ID]
     # A sequence batch prints sequence.count labels but labelito echoes copies=1, so the batch size
-    # is read from the request we just sent, not the response.
+    # is read from the request we just sent, not the response. Remember it for reprint-last.
     printed_labels = (
         request[ATTR_SEQUENCE][SEQ_KEY_COUNT] if ATTR_SEQUENCE in request else result[ATTR_COPIES]
     )
+    coordinator.last_job_labels = printed_labels
     _record_ha_print(coordinator, result, printed_labels)
     return result
 
@@ -256,7 +257,7 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
             "since the last restart"
         )
     try:
-        result = await coordinator.client.reprint(job_id)
+        result = await coordinator.client.reprint(job_id, coordinator.last_job_labels)
     except LabelitoAuthError as err:
         raise HomeAssistantError("labelito rejected the API token") from err
     except LabelitoConnectionError as err:
@@ -271,10 +272,10 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
                 f"{_speakable_detail(err.detail)}. Print a new label first."
             ) from err
         _raise_for_api_error(err, [])
-    # A replayed sequence batch reprints all its labels, but PrintResponse carries no item count, so
-    # the fallback counter can only credit copies (1 for a sequence job). An accepted undercount,
-    # consistent with the counter's other best-effort limits (it cannot see prints made outside HA).
-    _record_ha_print(coordinator, result, result[ATTR_COPIES])
+    # A replayed sequence batch reprints all its labels, and PrintResponse carries no item count, so
+    # credit the count recorded when the original job printed (last_job_labels, set in lockstep with
+    # last_job_id) rather than the echoed copies=1.
+    _record_ha_print(coordinator, result, coordinator.last_job_labels)
     return result
 
 

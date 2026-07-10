@@ -66,6 +66,10 @@ class LabelitoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # job_id of the last successful print issued through this integration; feeds the
         # reprint-last button/service. In-memory only — it resets on a Home Assistant restart.
         self.last_job_id: str | None = None
+        # Physical label count of that last job (sequence batch size, else copies). Set alongside
+        # last_job_id so reprint-last can credit the fallback counter correctly and scale its
+        # timeout — a PrintResponse carries no item count for a replayed sequence batch.
+        self.last_job_labels: int = 1
         # See the class docstring; touched only by services.py and the fallback sensor.
         self.ha_printed_count: int = 0
         # job_ids already added to ha_printed_count, so an idempotency-key replay (labelito returns

@@ -18,10 +18,24 @@ PATH_TEMPLATES = "/templates"
 PATH_PRINT = "/print"
 PATH_REPRINT = "/reprint/{job_id}"
 
-# Read endpoints answer immediately; a print renders and sends a raster to physical hardware
-# (a sequence batch sends one label at a time), so it gets a much longer budget.
+# Read endpoints answer immediately; a print renders and sends a raster to physical hardware, so it
+# gets a much longer budget.
 READ_TIMEOUT = aiohttp.ClientTimeout(total=15)
-PRINT_TIMEOUT = aiohttp.ClientTimeout(total=120)
+# A single label: render + raster + socket send + physical print.
+PRINT_TIMEOUT_SECONDS = 120
+# A sequence batch prints its labels one at a time server-side, so the wall-clock scales with the
+# item count. Without this, a large successful batch would false-timeout on the client (and a retry
+# without a stable idempotency_key would reprint the whole batch). Budget extra time per label
+# beyond the first so the total stays generous across the SequenceSpec range (up to 500).
+SEQUENCE_PER_LABEL_TIMEOUT_SECONDS = 6
+PRINT_TIMEOUT = aiohttp.ClientTimeout(total=PRINT_TIMEOUT_SECONDS)
+
+
+def _print_timeout(label_count: int) -> aiohttp.ClientTimeout:
+    """Print timeout scaled to the number of physical labels (1 for a plain print)."""
+    extra = max(0, label_count - 1) * SEQUENCE_PER_LABEL_TIMEOUT_SECONDS
+    return aiohttp.ClientTimeout(total=PRINT_TIMEOUT_SECONDS + extra)
+
 
 HTTP_UNAUTHORIZED = 401
 
@@ -146,15 +160,25 @@ class LabelitoClient:
 
     async def print_label(self, request: dict[str, Any]) -> dict[str, Any]:
         """POST /print — body is a labelito PrintRequest; returns PrintResponse
-        {job_id, template, copies, dry_run}."""
+        {job_id, template, copies, dry_run}.
+
+        A ``sequence`` batch prints ``sequence.count`` labels one at a time, so the timeout is
+        scaled to the item count to avoid false-timing-out a large but successful batch."""
+        sequence = request.get("sequence")
+        label_count = sequence.get("count", 1) if isinstance(sequence, dict) else 1
         result: dict[str, Any] = await self._request(
-            "POST", PATH_PRINT, json_body=request, timeout=PRINT_TIMEOUT
+            "POST", PATH_PRINT, json_body=request, timeout=_print_timeout(label_count)
         )
         return result
 
-    async def reprint(self, job_id: str) -> dict[str, Any]:
-        """POST /reprint/{job_id} — replays a recorded job; returns PrintResponse."""
+    async def reprint(self, job_id: str, expected_labels: int = 1) -> dict[str, Any]:
+        """POST /reprint/{job_id} — replays a recorded job; returns PrintResponse.
+
+        ``expected_labels`` scales the timeout for a replayed sequence batch (the request carries no
+        body to infer the size from); the caller passes the count recorded for the original job."""
         result: dict[str, Any] = await self._request(
-            "POST", PATH_REPRINT.format(job_id=job_id), timeout=PRINT_TIMEOUT
+            "POST",
+            PATH_REPRINT.format(job_id=job_id),
+            timeout=_print_timeout(expected_labels),
         )
         return result

@@ -9,10 +9,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.labelito.api import (
+    PRINT_TIMEOUT_SECONDS,
+    SEQUENCE_PER_LABEL_TIMEOUT_SECONDS,
     LabelitoApiError,
     LabelitoAuthError,
     LabelitoClient,
     LabelitoConnectionError,
+    _print_timeout,
 )
 
 from .const import (
@@ -123,6 +126,18 @@ async def test_templates_returns_list(
     aioclient_mock.get(f"{BASE_URL}/templates", json=MOCK_TEMPLATES)
     names = [t["name"] for t in await _client(hass).templates()]
     assert names == ["pantry", "freezer", "crate"]
+
+
+def test_print_timeout_is_base_for_single_label() -> None:
+    assert _print_timeout(1).total == PRINT_TIMEOUT_SECONDS
+
+
+def test_print_timeout_scales_with_sequence_size() -> None:
+    # A large batch must not false-timeout: the budget grows per label beyond the first.
+    assert (
+        _print_timeout(500).total
+        == PRINT_TIMEOUT_SECONDS + 499 * SEQUENCE_PER_LABEL_TIMEOUT_SECONDS
+    )
 
 
 async def test_reprint_posts_job_path(
