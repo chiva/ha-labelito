@@ -6,7 +6,7 @@ dashboards, and by voice through Assist.
 
 - **Printer entities** — state, loaded roll, connectivity, faults, and lifetime label count.
 - **`labelito.print` service** — print any template with field values, validated against the live
-  catalog before anything reaches the printer.
+  catalog before anything reaches the printer. Supports auto-numbered (`{{seq}}`) batches.
 - **`labelito.reprint_last`** — service and button to print the last label again.
 - **Voice** — "print a pantry label for tomato soup" via Assist custom sentences.
 - **Add-on discovery** — one-click setup when labelito runs as the
@@ -26,7 +26,7 @@ printer service itself; it talks to a labelito service you run separately (or as
 ## Requirements
 
 - A running labelito service (Docker, bare metal, or the Home Assistant add-on) reachable from
-  Home Assistant, speaking labelito API version 1.
+  Home Assistant, speaking labelito API version 3.
 - Home Assistant 2026.7 or newer (it ships Python 3.14, which this integration requires).
 
 ## Installation

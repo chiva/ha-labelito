@@ -88,6 +88,54 @@ print:
       selector:
         config_entry:
           integration: labelito
+    sequence:
+      collapsed: true
+      name: Auto-numbering
+      description: >-
+        Print a numbered batch instead of copies of one label. Only for templates that use the
+        {{seq}} token; the count replaces "copies" (the two cannot be combined). Set the number of
+        labels in "Count" to enable it.
+      fields:
+        seq_count:
+          name: Count
+          description: >-
+            Number of labels in the batch (1-500). Setting this turns the print into an
+            auto-numbered sequence; leave it empty for an ordinary print.
+          example: 50
+          selector:
+            number:
+              min: 1
+              max: 500
+              mode: box
+        seq_start:
+          name: Start
+          description: First number in the sequence. Defaults to 1 on the server.
+          example: 1
+          selector:
+            number:
+              min: -1000000000
+              max: 1000000000
+              mode: box
+        seq_step:
+          name: Step
+          description: Increment between consecutive numbers (>= 1). Defaults to 1 on the server.
+          example: 1
+          selector:
+            number:
+              min: 1
+              max: 1000000
+              mode: box
+        seq_padding:
+          name: Padding
+          description: >-
+            Minimum digit width, zero-padded (for example 3 renders 1 as "001"). 0 means no
+            padding, up to 32. Defaults to 0 on the server.
+          example: 3
+          selector:
+            number:
+              min: 0
+              max: 32
+              mode: box
 reprint_last:
   name: Reprint last label
   description: >-

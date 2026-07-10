@@ -40,13 +40,30 @@ from .const import (
     ATTR_JOB_ID,
     ATTR_LANGUAGE,
     ATTR_RED,
+    ATTR_SEQ_COUNT,
+    ATTR_SEQ_PADDING,
+    ATTR_SEQ_START,
+    ATTR_SEQ_STEP,
+    ATTR_SEQUENCE,
     ATTR_STATUS,
     ATTR_TEMPLATE,
     DOMAIN,
     JOB_STATUS_DRY_RUN,
     JOB_STATUS_PRINTED,
     MAX_COPIES,
+    MAX_SEQ_COUNT,
+    MAX_SEQ_PADDING,
+    MAX_SEQ_START,
+    MAX_SEQ_STEP,
     MIN_COPIES,
+    MIN_SEQ_COUNT,
+    MIN_SEQ_PADDING,
+    MIN_SEQ_START,
+    MIN_SEQ_STEP,
+    SEQ_KEY_COUNT,
+    SEQ_KEY_PADDING,
+    SEQ_KEY_START,
+    SEQ_KEY_STEP,
     SERVICE_PRINT,
     SERVICE_REPRINT_LAST,
 )
@@ -67,6 +84,21 @@ SERVICE_PRINT_SCHEMA = vol.Schema(
         vol.Optional(ATTR_RED): cv.boolean,
         vol.Optional(ATTR_DITHER): cv.boolean,
         vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
+        # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
+        # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
+        # a sequence batch (see _build_print_request); the others only shape the number.
+        vol.Optional(ATTR_SEQ_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
+        ),
+        vol.Optional(ATTR_SEQ_START): vol.All(
+            vol.Coerce(int), vol.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
+        ),
+        vol.Optional(ATTR_SEQ_STEP): vol.All(
+            vol.Coerce(int), vol.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
+        ),
+        vol.Optional(ATTR_SEQ_PADDING): vol.All(
+            vol.Coerce(int), vol.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
+        ),
         vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
     }
 )
@@ -154,13 +186,20 @@ async def async_validate_template(
     return templates
 
 
-def _record_ha_print(coordinator: LabelitoCoordinator, result: dict[str, Any]) -> None:
-    """Bump the HA-issued labels-printed counter and push it out immediately.
+def _record_ha_print(
+    coordinator: LabelitoCoordinator, result: dict[str, Any], printed_labels: int
+) -> None:
+    """Bump the HA-issued labels-printed counter by ``printed_labels`` and push it out immediately.
 
     Every print path (service call, voice intent, reprint button) funnels through
     async_execute_print or async_reprint_last, so this is the single place the fallback
     labels-printed sensor's backing counter is touched. async_update_listeners() notifies the
     sensor right away instead of waiting up to 90 s for the next USB status poll.
+
+    Callers pass the physical label count: ``result[ATTR_COPIES]`` for a plain print, or the
+    sequence batch size for an auto-numbering print — labelito reports ``copies: 1`` for a sequence
+    batch (the item count lives in the request's sequence spec, not the response), so the caller
+    must supply it.
 
     Counts each job_id at most once: labelito replays an idempotency-key reuse as the prior
     PrintResponse (same job_id, no physical print), so a retried print with a stable key must not
@@ -172,7 +211,7 @@ def _record_ha_print(coordinator: LabelitoCoordinator, result: dict[str, Any]) -
     if job_id in coordinator.counted_job_ids:
         return
     coordinator.counted_job_ids.add(job_id)
-    coordinator.ha_printed_count += result[ATTR_COPIES]
+    coordinator.ha_printed_count += printed_labels
     coordinator.async_update_listeners()
 
 
@@ -199,7 +238,12 @@ async def async_execute_print(
     except LabelitoApiError as err:
         _raise_for_api_error(err, coordinator.template_names(templates))
     coordinator.last_job_id = result[ATTR_JOB_ID]
-    _record_ha_print(coordinator, result)
+    # A sequence batch prints sequence.count labels but labelito echoes copies=1, so the batch size
+    # is read from the request we just sent, not the response.
+    printed_labels = (
+        request[ATTR_SEQUENCE][SEQ_KEY_COUNT] if ATTR_SEQUENCE in request else result[ATTR_COPIES]
+    )
+    _record_ha_print(coordinator, result, printed_labels)
     return result
 
 
@@ -227,7 +271,10 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
                 f"{_speakable_detail(err.detail)}. Print a new label first."
             ) from err
         _raise_for_api_error(err, [])
-    _record_ha_print(coordinator, result)
+    # A replayed sequence batch reprints all its labels, but PrintResponse carries no item count, so
+    # the fallback counter can only credit copies (1 for a sequence job). An accepted undercount,
+    # consistent with the counter's other best-effort limits (it cannot see prints made outside HA).
+    _record_ha_print(coordinator, result, result[ATTR_COPIES])
     return result
 
 
@@ -253,7 +300,48 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
     options = {key: data[key] for key in (ATTR_RED, ATTR_DITHER) if key in data}
     if options:
         request["options"] = options
+    # seq_count marks the request as an auto-numbering batch; the other seq_* inputs only shape the
+    # number and are omitted when unset so labelito's SequenceSpec applies its defaults. Cross-field
+    # rules (count-required, copies exclusivity) are enforced in _validate_sequence before this runs.
+    if ATTR_SEQ_COUNT in data:
+        sequence: dict[str, Any] = {SEQ_KEY_COUNT: data[ATTR_SEQ_COUNT]}
+        if ATTR_SEQ_START in data:
+            sequence[SEQ_KEY_START] = data[ATTR_SEQ_START]
+        if ATTR_SEQ_STEP in data:
+            sequence[SEQ_KEY_STEP] = data[ATTR_SEQ_STEP]
+        if ATTR_SEQ_PADDING in data:
+            sequence[SEQ_KEY_PADDING] = data[ATTR_SEQ_PADDING]
+        request[ATTR_SEQUENCE] = sequence
     return request
+
+
+def _validate_sequence(data: dict[str, Any]) -> None:
+    """Reject invalid auto-numbering input before it reaches the printer service.
+
+    Two cross-field rules that labelito would otherwise return as a 422, surfaced here as clear,
+    fail-fast errors (mirroring async_validate_template's client-side template check):
+
+    * A seq_start/seq_step/seq_padding without seq_count — the batch size is undefined; seq_count is
+      the required anchor of a SequenceSpec.
+    * seq_count together with copies > 1 — labelito's ``sequence`` and ``copies`` are mutually
+      exclusive: sequence drives the item count, copies multiplies identical labels.
+
+    The ``{{seq}}``-template biconditional (a sequence is required iff the template uses ``{{seq}}``)
+    is left to labelito, whose 422 is already rendered speakably by _speakable_detail.
+    """
+    other_seq_inputs = {ATTR_SEQ_START, ATTR_SEQ_STEP, ATTR_SEQ_PADDING} & data.keys()
+    if ATTR_SEQ_COUNT not in data:
+        if other_seq_inputs:
+            raise ServiceValidationError(
+                "Auto-numbering needs 'seq_count' (the number of labels in the batch) when any of "
+                "seq_start / seq_step / seq_padding is set."
+            )
+        return
+    if data[ATTR_COPIES] > MIN_COPIES:
+        raise ServiceValidationError(
+            "'seq_count' and 'copies' > 1 are mutually exclusive: a sequence already prints "
+            "seq_count labels. Leave copies at 1 (the default) when auto-numbering."
+        )
 
 
 def async_setup_services(hass: HomeAssistant) -> None:
@@ -261,6 +349,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
     async def _handle_print(call: ServiceCall) -> ServiceResponse:
         coordinator = resolve_coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        _validate_sequence(dict(call.data))
         await async_validate_template(coordinator, call.data[ATTR_TEMPLATE])
         result = await async_execute_print(coordinator, _build_print_request(dict(call.data)))
         if not call.return_response:

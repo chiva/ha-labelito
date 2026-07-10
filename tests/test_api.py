@@ -31,7 +31,7 @@ def _client(hass: HomeAssistant, token: str | None = MOCK_TOKEN) -> LabelitoClie
 
 async def test_health_ok(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     aioclient_mock.get(f"{BASE_URL}/health", json=MOCK_HEALTH)
-    assert (await _client(hass).health())["api_version"] == 1
+    assert (await _client(hass).health())["api_version"] == 3
 
 
 async def test_bearer_token_sent(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
@@ -122,7 +122,7 @@ async def test_templates_returns_list(
 ) -> None:
     aioclient_mock.get(f"{BASE_URL}/templates", json=MOCK_TEMPLATES)
     names = [t["name"] for t in await _client(hass).templates()]
-    assert names == ["pantry", "freezer"]
+    assert names == ["pantry", "freezer", "crate"]
 
 
 async def test_reprint_posts_job_path(

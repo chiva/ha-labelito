@@ -119,7 +119,10 @@ class LabelitoClient:
 
     async def health(self) -> dict[str, Any]:
         """GET /health — HealthResponse: status, version, api_version, driver, model, transport,
-        uri, template_count, default_language, languages. Unauthenticated."""
+        template_count, default_language, languages. Unauthenticated.
+
+        The printer ``uri`` was dropped from this probe at API v3 (it is internal topology that does
+        not belong on an unauthenticated endpoint); it now lives only on /printer/status."""
         result: dict[str, Any] = await self._request("GET", PATH_HEALTH)
         return result
 

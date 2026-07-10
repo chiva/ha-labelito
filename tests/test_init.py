@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import aiohttp
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -42,10 +43,28 @@ async def test_setup_retry_when_service_unreachable(
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
 
 
-async def test_setup_error_on_unsupported_api_version(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, mock_config_entry: MockConfigEntry
+# The gate is pinned to v3, the sole supported contract.
+async def test_setup_accepts_supported_api_version(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
 ) -> None:
-    register_labelito(aioclient_mock, health={**MOCK_HEALTH, "api_version": 99})
+    register_labelito(aioclient_mock, health={**MOCK_HEALTH, "api_version": 3})
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.LOADED
+
+
+# Superseded older contracts (1, 2), the next breaking bump (4), and a far-future one are rejected.
+@pytest.mark.parametrize("api_version", [1, 2, 4, 99])
+async def test_setup_error_on_unsupported_api_version(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+    api_version: int,
+) -> None:
+    register_labelito(aioclient_mock, health={**MOCK_HEALTH, "api_version": api_version})
     mock_config_entry.add_to_hass(hass)
     assert not await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()

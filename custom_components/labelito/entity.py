@@ -23,12 +23,13 @@ class LabelitoEntity(CoordinatorEntity[LabelitoCoordinator]):
         status = coordinator.data or {}
         # Identity fields come from the SNMP status channel and are absent on USB/file
         # transports; fall back to the /health MODEL so the device card still names the printer.
+        # No sw_version: API v3 exposes no printer-firmware field (``firmware`` was dropped from
+        # /printer/status at v2), so there is nothing to populate it from.
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.unique_id)},
             manufacturer=MANUFACTURER,
             name=entry.title,
             model=status.get("model") or coordinator.health.get("model"),
             serial_number=status.get("serial"),
-            sw_version=status.get("firmware"),
             configuration_url=coordinator.client.base_url,
         )

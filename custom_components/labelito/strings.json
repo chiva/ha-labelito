@@ -143,6 +143,28 @@
         "config_entry_id": {
           "name": "labelito instance",
           "description": "Which configured labelito service to print on. Only needed with multiple instances."
+        },
+        "seq_count": {
+          "name": "Count",
+          "description": "Number of labels in an auto-numbered batch (1-500). Setting this turns the print into a sequence; leave empty for an ordinary print."
+        },
+        "seq_start": {
+          "name": "Start",
+          "description": "First number in the sequence. Defaults to 1 on the server."
+        },
+        "seq_step": {
+          "name": "Step",
+          "description": "Increment between consecutive numbers (>= 1). Defaults to 1 on the server."
+        },
+        "seq_padding": {
+          "name": "Padding",
+          "description": "Minimum digit width, zero-padded (3 renders 1 as \"001\"); 0-32, 0 means no padding. Defaults to 0 on the server."
+        }
+      },
+      "sections": {
+        "sequence": {
+          "name": "Auto-numbering",
+          "description": "Print a numbered batch (using a {{seq}} template) instead of copies of one label. Set Count to enable; it replaces \"copies\"."
         }
       }
     },

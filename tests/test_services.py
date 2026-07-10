@@ -14,6 +14,7 @@ from custom_components.labelito.coordinator import LabelitoCoordinator
 from custom_components.labelito.services import (
     _build_print_request,
     _speakable_detail,
+    _validate_sequence,
     async_execute_print,
     async_reprint_last,
     async_validate_template,
@@ -206,6 +207,76 @@ def test_build_print_request_passes_through_idempotency_key() -> None:
         }
     )
     assert request["idempotency_key"] == "stable-key-1"
+
+
+def test_build_print_request_assembles_sequence() -> None:
+    request = _build_print_request(
+        {
+            "template": "crate",
+            "fields": {"label": "Widgets"},
+            "copies": 1,
+            "dry_run": False,
+            "seq_count": 50,
+            "seq_start": 100,
+            "seq_step": 2,
+            "seq_padding": 3,
+        }
+    )
+    assert request["sequence"] == {"count": 50, "start": 100, "step": 2, "padding": 3}
+
+
+def test_build_print_request_sequence_count_only_omits_defaults() -> None:
+    # Only seq_count set: the optional knobs are omitted so labelito's SequenceSpec defaults apply.
+    request = _build_print_request(
+        {"template": "crate", "fields": {}, "copies": 1, "dry_run": False, "seq_count": 10}
+    )
+    assert request["sequence"] == {"count": 10}
+
+
+def test_build_print_request_no_sequence_without_count() -> None:
+    request = _build_print_request(
+        {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+    )
+    assert "sequence" not in request
+
+
+def test_validate_sequence_requires_count() -> None:
+    with pytest.raises(ServiceValidationError, match="seq_count"):
+        _validate_sequence(
+            {"template": "crate", "fields": {}, "copies": 1, "dry_run": False, "seq_start": 5}
+        )
+
+
+def test_validate_sequence_rejects_copies_with_count() -> None:
+    with pytest.raises(ServiceValidationError, match="mutually exclusive"):
+        _validate_sequence(
+            {"template": "crate", "fields": {}, "copies": 3, "dry_run": False, "seq_count": 10}
+        )
+
+
+def test_validate_sequence_allows_plain_and_sequence_prints() -> None:
+    # No sequence input, and a valid sequence (count with copies == 1) both pass without raising.
+    _validate_sequence({"template": "pantry", "fields": {}, "copies": 2, "dry_run": False})
+    _validate_sequence(
+        {"template": "crate", "fields": {}, "copies": 1, "dry_run": False, "seq_count": 10}
+    )
+
+
+async def test_execute_print_counts_sequence_batch(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # labelito echoes copies=1 for a sequence batch; the counter must credit the sequence count.
+    await async_execute_print(
+        coordinator,
+        {
+            "template": "crate",
+            "fields": {"label": "x"},
+            "copies": 1,
+            "dry_run": False,
+            "sequence": {"count": 5},
+        },
+    )
+    assert coordinator.ha_printed_count == 5
 
 
 def test_speakable_detail_media_mismatch() -> None:

@@ -97,7 +97,7 @@ async def test_stale_catalog_served_on_refresh_error(
     await coord.async_get_templates()
     client.templates.side_effect = LabelitoError("blip")
     result = await coord.async_get_templates(force_refresh=True)
-    assert coord.template_names(result) == ["freezer", "pantry"]
+    assert coord.template_names(result) == ["crate", "freezer", "pantry"]
 
 
 async def test_initial_template_fetch_error_propagates(

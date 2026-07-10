@@ -9,8 +9,12 @@ MANUFACTURER: Final = "Brother"
 
 # HTTP API compatibility gate, checked against HealthResponse.api_version at config time.
 # labelito bumps api_version only on breaking changes; additive changes keep the number.
-MIN_API_VERSION: Final = 1
-MAX_API_VERSION: Final = 1
+# Pinned to v3 — the sole supported contract. The breaking removals that moved the number here were
+#   v2: dropped ``firmware`` from /printer/status (so this integration exposes no device sw_version).
+#   v3: dropped ``uri`` from /health (the client now sources ``uri`` from /printer/status).
+# Sequence/auto-numbering (used by the print service) has existed since v2 and is present in v3.
+MIN_API_VERSION: Final = 3
+MAX_API_VERSION: Final = 3
 
 DEFAULT_PORT: Final = 8765
 
@@ -65,6 +69,31 @@ ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 
 ATTR_JOB_ID: Final = "job_id"
 ATTR_STATUS: Final = "status"
+
+# Auto-numbering ({{seq}}) batch. The service exposes flat inputs (seq_*), assembled into the
+# nested ``sequence`` object labelito's PrintRequest expects. Sub-dict keys and bounds mirror
+# labelito's SequenceSpec (app/models.py) exactly.
+ATTR_SEQUENCE: Final = "sequence"
+
+ATTR_SEQ_COUNT: Final = "seq_count"
+ATTR_SEQ_START: Final = "seq_start"
+ATTR_SEQ_STEP: Final = "seq_step"
+ATTR_SEQ_PADDING: Final = "seq_padding"
+
+SEQ_KEY_COUNT: Final = "count"
+SEQ_KEY_START: Final = "start"
+SEQ_KEY_STEP: Final = "step"
+SEQ_KEY_PADDING: Final = "padding"
+
+# SequenceSpec bounds (Field(ge=..., le=...) in labelito's models).
+MIN_SEQ_COUNT: Final = 1
+MAX_SEQ_COUNT: Final = 500
+MIN_SEQ_START: Final = -(10**9)
+MAX_SEQ_START: Final = 10**9
+MIN_SEQ_STEP: Final = 1
+MAX_SEQ_STEP: Final = 10**6
+MIN_SEQ_PADDING: Final = 0
+MAX_SEQ_PADDING: Final = 32
 
 # PrintRequest.copies bounds (Field(ge=1, le=10) in labelito's models).
 MIN_COPIES: Final = 1

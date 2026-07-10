@@ -22,9 +22,39 @@ data:
 | `red` / `dither` | no | Two-color printing / Floyd-Steinberg dithering; unset inherits the server defaults. |
 | `idempotency_key` | no | Stable key so labelito dedupes a replayed request; see retries below. |
 | `config_entry_id` | no | Only needed when several labelito services are configured. |
+| `seq_count` | no | Number of labels in an auto-numbering batch (1-500); see below. |
+| `seq_start` | no | First sequence number (server default 1). |
+| `seq_step` | no | Increment between numbers, ≥ 1 (server default 1). |
+| `seq_padding` | no | Minimum zero-padded digit width, 0-32 (server default 0; `3` → `001`). |
 
 The service supports responses: use `response_variable` to receive `{job_id, status}` where
 `status` is `printed` or `dry-run` (see [`examples/print_with_response.yaml`](../examples/print_with_response.yaml)).
+
+### Auto-numbering (`{{seq}}`)
+
+Templates that use the `{{seq}}` token print a **numbered batch** instead of copies of one label.
+Set `seq_count` to the batch size (this is what turns a print into a sequence); `seq_start`,
+`seq_step`, and `seq_padding` shape the number and each inherit the server default when omitted.
+
+```yaml
+action: labelito.print
+data:
+  template: crate      # a template that uses {{seq}}
+  fields:
+    label: "Widgets"
+  seq_count: 50
+  seq_padding: 3       # 001, 002, … 050
+```
+
+Rules (a mismatch fails fast with a clear error):
+
+- `seq_count` and `copies` > 1 are **mutually exclusive** — a sequence already drives the item count.
+- A `{{seq}}` template **requires** a sequence, and a non-`{{seq}}` template **rejects** one
+  (enforced by labelito). Check a template's `uses_seq` flag via `GET /templates` or the web UI.
+- The **Labels printed** counter credits the full batch size for a sequence print. A *reprint* of a
+  sequence batch can only credit one (the reprint response carries no item count).
+
+Auto-numbering is available via the service and dashboard only — not through voice/Assist.
 
 ### Retrying safely
 
