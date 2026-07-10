@@ -250,6 +250,16 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
         # ASR/spelling variant of the template before a connector still fuzzy-resolves + recovers.
         ("pantri para sopa de tomate", [{"name": "pantry"}], "pantry", "sopa de tomate"),
         ("freezr que diga lasaña", [{"name": "freezer"}], "freezer", "lasaña"),
+        # A connector word *inside* a template name is not read as a text boundary: an ASR variant
+        # of the long name wins over a shorter prefix + connector split.
+        (
+            "freezer for leftover",
+            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
+            "freezer-for-leftovers",
+            None,
+        ),
+        # ...but a genuine short text after the connector is still recovered, not swallowed.
+        ("pantry para si", [{"name": "pantry"}], "pantry", "si"),
     ],
 )
 def test_split_template_and_text_prefix_overlap(

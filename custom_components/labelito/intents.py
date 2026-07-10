@@ -66,6 +66,12 @@ SPEECH: dict[str, dict[str, str]] = {
 
 FUZZY_MATCH_CUTOFF = 0.6
 
+# Stricter cutoff for accepting the *whole* utterance as one template name before attempting a
+# connector split. High on purpose: it must fire for an ASR variant of a connector-containing name
+# ("freezer for leftover" → "freezer-for-leftovers") without swallowing a real "<template>
+# <connector> <text>" command, where the added text pushes the whole-string ratio well below this.
+WHOLE_TEMPLATE_MATCH_CUTOFF = 0.8
+
 # Connector phrases that sit between {template} and {text} in the sentence files (es: "para",
 # "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance into
 # the greedy trailing {template} wildcard (see docs/voice-assist.md), exactly one of these leading
@@ -141,17 +147,27 @@ def _split_template_and_text(
 
     1. If the *whole* utterance is exactly a template name, there is no free text — return it as is
        (so a legitimate multi-word template like ``freezer-dated`` is not split into ``freezer``).
-    2. Otherwise find the longest leading token-run that is exactly a template name **followed by a
+    2. If the whole utterance is a *very close* match to a template name (``freezer for leftover`` →
+       ``freezer-for-leftovers``), prefer it — a connector word inside a template name must not be
+       read as a text boundary. The stricter cutoff keeps real "<template> <connector> <text>"
+       commands (whose extra text lowers the whole-string ratio) out of this branch.
+    3. Otherwise find the longest leading token-run that is exactly a template name **followed by a
        connector phrase**; the tokens after that phrase are the spoken text. Requiring the connector
        avoids treating trailing words of a multi-word template name as text.
-    3. Otherwise split at the first connector phrase and **fuzzy**-match the prefix before it, so an
+    4. Otherwise split at the first connector phrase and **fuzzy**-match the prefix before it, so an
        ASR/spelling variant ("pantri para …") still recovers the text (the intent is fuzzy by
-       design). Exact matches from steps 1-2 take precedence over this.
-    4. Fall back to :func:`_fuzzy_match_template` on the whole utterance (no free text recovered).
+       design). Exact matches from steps 1-3 take precedence over this.
+    5. Fall back to :func:`_fuzzy_match_template` on the whole utterance (no free text recovered).
     """
     by_normalized = {_normalize(t["name"]): t for t in templates}
     if _normalize(spoken) in by_normalized:
         return by_normalized[_normalize(spoken)], None
+
+    whole_close = difflib.get_close_matches(
+        _normalize(spoken), list(by_normalized), n=1, cutoff=WHOLE_TEMPLATE_MATCH_CUTOFF
+    )
+    if whole_close:
+        return by_normalized[whole_close[0]], None
 
     tokens = spoken.split()
     for end in range(len(tokens) - 1, 0, -1):
