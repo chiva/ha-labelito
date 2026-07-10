@@ -103,9 +103,15 @@ def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[
     close = difflib.get_close_matches(wanted, list(by_normalized), n=1, cutoff=FUZZY_MATCH_CUTOFF)
     if close:
         return by_normalized[close[0]]
-    for normalized, template in by_normalized.items():
-        if wanted in normalized or normalized in wanted:
-            return template
+    # Prefer the longest overlapping name so an overlapping catalog (e.g. freezer / freezer-dated)
+    # resolves to the more specific template regardless of catalog order.
+    substring_matches = [
+        (len(normalized), template)
+        for normalized, template in by_normalized.items()
+        if wanted in normalized or normalized in wanted
+    ]
+    if substring_matches:
+        return max(substring_matches, key=lambda item: item[0])[1]
     return None
 
 

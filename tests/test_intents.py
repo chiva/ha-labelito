@@ -260,6 +260,14 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
         ),
         # ...but a genuine short text after the connector is still recovered, not swallowed.
         ("pantry para si", [{"name": "pantry"}], "pantry", "si"),
+        # Step-5 substring fallback prefers the longest overlapping name over catalog order:
+        # "freezer" is listed first but "freezer-dated" is the more specific match.
+        (
+            "freezer dated uno dos tres cuatro",
+            [{"name": "freezer"}, {"name": "freezer-dated"}],
+            "freezer-dated",
+            None,
+        ),
     ],
 )
 def test_split_template_and_text_prefix_overlap(
