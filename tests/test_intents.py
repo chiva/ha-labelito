@@ -247,6 +247,9 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
         ("pantry para para mañana", [{"name": "pantry"}], "pantry", "para mañana"),
         # A trailing word that is not a connector is not mistaken for text (no split without one).
         ("freezer lasagna", [{"name": "freezer"}], "freezer", None),
+        # ASR/spelling variant of the template before a connector still fuzzy-resolves + recovers.
+        ("pantri para sopa de tomate", [{"name": "pantry"}], "pantry", "sopa de tomate"),
+        ("freezr que diga lasaña", [{"name": "freezer"}], "freezer", "lasaña"),
     ],
 )
 def test_split_template_and_text_prefix_overlap(

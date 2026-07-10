@@ -116,6 +116,20 @@ def _strip_leading_connector(tokens: list[str]) -> list[str] | None:
     return None
 
 
+def _split_on_connector(tokens: list[str]) -> tuple[list[str], list[str]] | None:
+    """Split ``tokens`` at the first connector phrase into (before, after), or ``None`` if absent.
+
+    Used as the fallback boundary when no leading token-run is an *exact* template name, so a fuzzy
+    template prefix ("pantri para …") can still be recovered. Requires ≥1 token before the connector.
+    """
+    normalized = [_normalize(token) for token in tokens]
+    for index in range(1, len(tokens)):
+        for phrase in CONNECTOR_PHRASES:
+            if tuple(normalized[index : index + len(phrase)]) == phrase:
+                return tokens[:index], tokens[index + len(phrase) :]
+    return None
+
+
 def _split_template_and_text(
     spoken: str, templates: list[dict[str, Any]]
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -130,7 +144,10 @@ def _split_template_and_text(
     2. Otherwise find the longest leading token-run that is exactly a template name **followed by a
        connector phrase**; the tokens after that phrase are the spoken text. Requiring the connector
        avoids treating trailing words of a multi-word template name as text.
-    3. Fall back to :func:`_fuzzy_match_template` (close/substring) for typo tolerance.
+    3. Otherwise split at the first connector phrase and **fuzzy**-match the prefix before it, so an
+       ASR/spelling variant ("pantri para …") still recovers the text (the intent is fuzzy by
+       design). Exact matches from steps 1-2 take precedence over this.
+    4. Fall back to :func:`_fuzzy_match_template` on the whole utterance (no free text recovered).
     """
     by_normalized = {_normalize(t["name"]): t for t in templates}
     if _normalize(spoken) in by_normalized:
@@ -147,6 +164,14 @@ def _split_template_and_text(
         recovered = " ".join(after_connector).strip() or None
         if recovered is not None:
             return by_normalized[prefix], recovered
+
+    split = _split_on_connector(tokens)
+    if split is not None:
+        prefix_tokens, text_tokens = split
+        template = _fuzzy_match_template(" ".join(prefix_tokens), templates)
+        recovered = " ".join(text_tokens).strip() or None
+        if template is not None and recovered is not None:
+            return template, recovered
 
     return _fuzzy_match_template(spoken, templates), None
 
