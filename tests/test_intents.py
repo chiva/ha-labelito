@@ -174,6 +174,34 @@ def test_split_template_and_text(
     assert text == expected_text
 
 
+# Catalog where one template name is a prefix of another (freezer vs freezer-dated).
+_OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
+
+
+@pytest.mark.parametrize(
+    ("spoken", "templates", "expected_name", "expected_text"),
+    [
+        # Exact multi-word template must win over a shorter prefix — no bogus split into text.
+        ("freezer dated", _OVERLAP_CATALOG, "freezer-dated", None),
+        # ...but a real overcapture on the multi-word template still recovers the text.
+        ("freezer dated para lasagna", _OVERLAP_CATALOG, "freezer-dated", "lasagna"),
+        # Only ONE connector phrase is stripped: text that begins with a connector word survives.
+        ("pantry para para mañana", [{"name": "pantry"}], "pantry", "para mañana"),
+        # A trailing word that is not a connector is not mistaken for text (no split without one).
+        ("freezer lasagna", [{"name": "freezer"}], "freezer", None),
+    ],
+)
+def test_split_template_and_text_prefix_overlap(
+    spoken: str,
+    templates: list[dict[str, Any]],
+    expected_name: str | None,
+    expected_text: str | None,
+) -> None:
+    template, text = _split_template_and_text(spoken, templates)
+    assert (template["name"] if template else None) == expected_name
+    assert text == expected_text
+
+
 # --- hassil-level regression: documents WHY the handler recovery is needed ------------------
 
 

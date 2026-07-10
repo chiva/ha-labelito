@@ -61,11 +61,17 @@ SPEECH: dict[str, dict[str, str]] = {
 
 FUZZY_MATCH_CUTOFF = 0.6
 
-# Connectors that sit between {template} and {text} in the sentence files (es: "para",
-# "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance
-# into the greedy trailing {template} wildcard (see docs/voice-assist.md), the free text is
-# recovered by stripping these leading connectors off the residue. See _split_template_and_text.
-TEXT_CONNECTORS: frozenset[str] = frozenset({"para", "que", "diga", "for", "that", "says"})
+# Connector phrases that sit between {template} and {text} in the sentence files (es: "para",
+# "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance into
+# the greedy trailing {template} wildcard (see docs/voice-assist.md), exactly one of these leading
+# phrases is stripped to recover the free text. Ordered longest-first so multi-word phrases win.
+# See _split_template_and_text.
+CONNECTOR_PHRASES: tuple[tuple[str, ...], ...] = (
+    ("que", "diga"),
+    ("that", "says"),
+    ("para",),
+    ("for",),
+)
 
 
 def _speech_language(language: str | None) -> str:
@@ -92,6 +98,19 @@ def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[
     return None
 
 
+def _strip_leading_connector(tokens: list[str]) -> list[str] | None:
+    """If ``tokens`` begins with a connector phrase, return the tokens after it, else ``None``.
+
+    Exactly one phrase is stripped (longest match wins), so text that itself starts with a connector
+    word — e.g. "para para mañana" → "para mañana" — keeps the rest intact.
+    """
+    normalized = [_normalize(token) for token in tokens]
+    for phrase in CONNECTOR_PHRASES:
+        if tuple(normalized[: len(phrase)]) == phrase:
+            return tokens[len(phrase) :]
+    return None
+
+
 def _split_template_and_text(
     spoken: str, templates: list[dict[str, Any]]
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -99,25 +118,31 @@ def _split_template_and_text(
 
     HA's ``recognize_best`` collapses "<template> <connector> <text>" into the single greedy
     trailing ``{template}`` wildcard for languages whose sentences lack a literal after it (see
-    docs/voice-assist.md). To recover, find the longest leading token-run that is *exactly* a known
-    template name; whatever remains (minus a leading connector) is the spoken text. Falls back to
-    :func:`_fuzzy_match_template` when the whole utterance is just a template name (or a typo of one).
+    docs/voice-assist.md). Resolution order:
+
+    1. If the *whole* utterance is exactly a template name, there is no free text — return it as is
+       (so a legitimate multi-word template like ``freezer-dated`` is not split into ``freezer``).
+    2. Otherwise find the longest leading token-run that is exactly a template name **followed by a
+       connector phrase**; the tokens after that phrase are the spoken text. Requiring the connector
+       avoids treating trailing words of a multi-word template name as text.
+    3. Fall back to :func:`_fuzzy_match_template` (close/substring) for typo tolerance.
     """
     by_normalized = {_normalize(t["name"]): t for t in templates}
+    if _normalize(spoken) in by_normalized:
+        return by_normalized[_normalize(spoken)], None
+
     tokens = spoken.split()
-    # Prefer the longest leading run of tokens that names a template exactly; the rest is the text.
     for end in range(len(tokens) - 1, 0, -1):
         prefix = _normalize(" ".join(tokens[:end]))
         if prefix not in by_normalized:
             continue
-        rest = tokens[end:]
-        while rest and _normalize(rest[0]) in TEXT_CONNECTORS:
-            rest = rest[1:]
-        recovered = " ".join(rest).strip() or None
+        after_connector = _strip_leading_connector(tokens[end:])
+        if after_connector is None:
+            continue
+        recovered = " ".join(after_connector).strip() or None
         if recovered is not None:
             return by_normalized[prefix], recovered
-        break
-    # No "<template> <text>" split: the whole utterance is (or fuzzily resolves to) a template.
+
     return _fuzzy_match_template(spoken, templates), None
 
 
