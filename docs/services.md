@@ -52,7 +52,10 @@ Rules (a mismatch fails fast with a clear error):
 - A `{{seq}}` template **requires** a sequence, and a non-`{{seq}}` template **rejects** one
   (enforced by labelito). Check a template's `uses_seq` flag via `GET /templates` or the web UI.
 - The **Labels printed** counter credits the full batch size for a sequence print. A *reprint* of a
-  sequence batch can only credit one (the reprint response carries no item count).
+  sequence batch credits the size recorded for that job.
+- Accounting is success-only (as for multi-copy prints): if a batch fails partway through, the
+  labels already printed are **not** credited and the service reports the error. Pass a stable
+  `idempotency_key` when you need a retry to be safe against duplicates.
 
 Auto-numbering is available via the service and dashboard only — not through voice/Assist.
 
