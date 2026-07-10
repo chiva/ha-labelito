@@ -212,6 +212,21 @@ async def test_unknown_template_lists_available(hass: HomeAssistant) -> None:
     assert "pantry" in speech
 
 
+async def test_template_miss_forces_catalog_refresh_then_prints(hass: HomeAssistant) -> None:
+    """A miss on the cached catalog forces one refresh; a template new in the fresh catalog prints."""
+    coordinator = _make_coordinator()
+    coordinator.async_get_templates.side_effect = [
+        list(MOCK_TEMPLATES),
+        [*MOCK_TEMPLATES, {"name": "seasonal"}],
+    ]
+
+    _, execute = await _handle(hass, {"template": "seasonal"}, coordinator=coordinator)
+
+    assert _printed_request(execute)["template"] == "seasonal"
+    assert coordinator.async_get_templates.await_count == 2
+    assert coordinator.async_get_templates.await_args_list[1].kwargs == {"force_refresh": True}
+
+
 # --- the split helper in isolation ----------------------------------------------------------
 
 

@@ -10,19 +10,19 @@ it into your `<config>` directory so the files land at:
 <config>/custom_sentences/es/labelito.yaml
 ```
 
-On **Core** or **Container** installs (you have shell access), run this from the folder where you
-downloaded the repo's `custom_sentences/` directory, with `<config>` set to your Home Assistant
-config directory:
+On **Core** or **Container** installs, run this from the folder where you downloaded the repo's
+`custom_sentences/` directory, setting `CONFIG` to your Home Assistant config directory:
 
 ```bash
-mkdir -p <config>/custom_sentences/en <config>/custom_sentences/es
-cp custom_sentences/en/labelito.yaml <config>/custom_sentences/en/
-cp custom_sentences/es/labelito.yaml <config>/custom_sentences/es/
+CONFIG=/path/to/home-assistant/config
+mkdir -p "$CONFIG"/custom_sentences/en "$CONFIG"/custom_sentences/es
+cp custom_sentences/en/labelito.yaml "$CONFIG"/custom_sentences/en/
+cp custom_sentences/es/labelito.yaml "$CONFIG"/custom_sentences/es/
 ```
 
-On **Home Assistant OS / Supervised** there is no shell — use the **File editor**, **Samba**, or
-**Studio Code Server** add-on to create `custom_sentences/<lang>/` under `/config` and upload the
-two files.
+On **Home Assistant OS / Supervised**, if you don't have shell access (e.g. via the Terminal & SSH
+add-on), use the **File editor**, **Samba**, or **Studio Code Server** add-on to create
+`custom_sentences/<lang>/` under `/config` and upload the two files.
 
 Reload Home Assistant (or restart), then say things like:
 
