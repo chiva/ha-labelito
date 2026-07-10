@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/chiva/ha-labelito/compare/v0.2.0...v1.0.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* the integration now requires a labelito service speaking API version 3; v1/v2 servers are rejected at setup.
+
+### Features
+
+* target labelito API v3 and add {{seq}} auto-numbering ([#18](https://github.com/chiva/ha-labelito/issues/18)) ([f65b6aa](https://github.com/chiva/ha-labelito/commit/f65b6aac1260e83d0b3ac8ad745a532718a79b13))
+
 ## [0.2.0](https://github.com/chiva/ha-labelito/compare/v0.1.0...v0.2.0) (2026-07-05)
 
 
