@@ -289,6 +289,15 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
             "freezer-for-leftovers",
             "A1",
         ),
+        # Overlapping names where the connector is a real text boundary, NOT inside a template name:
+        # "freezer para lasagna" must stay template "freezer" + text "lasagna", even though the whole
+        # utterance fuzzy-matches the longer "freezer-lasagna" (whose name does not contain "para").
+        (
+            "freezer para lasagna",
+            [{"name": "freezer"}, {"name": "freezer-lasagna"}],
+            "freezer",
+            "lasagna",
+        ),
         # Step-5 substring fallback prefers the longest overlapping name over catalog order:
         # "freezer" is listed first but "freezer-dated" is the more specific match.
         (

@@ -178,8 +178,9 @@ def _split_template_and_text(
        phrase**; the tokens after it are the spoken text. Highest precision, so it runs before the
        whole-utterance match — otherwise a long name plus short text ("freezer for leftovers para
        A1") keeps the whole-string ratio above the cutoff and the text is silently dropped. It is
-       overridden by the whole match (step 4) only when that resolves a *longer* template name than
-       the matched prefix — i.e. the connector sits inside that name, not at a text boundary.
+       overridden by the whole match (step 4) only when that name *begins with* "<prefix>
+       <connector>" — i.e. the connector sits inside the name ("freezer for leftover" →
+       "freezer-for-leftovers"), not at a text boundary ("freezer para lasagna" keeps the split).
     3. Otherwise take the highest-confidence fuzzy connector split (:func:`_best_connector_split`)
        when its prefix match is strong (≥ the whole cutoff): this recovers text even when the prefix
        is an ASR/spelling variant of a multi-word name ("pantri para …", "freezer for leftover para
@@ -197,7 +198,8 @@ def _split_template_and_text(
 
     tokens = spoken.split()
     # Longest exact leading template name + connector phrase → the text after it (highest precision).
-    exact_split: tuple[dict[str, Any], str, str] | None = None  # (template, prefix_norm, text)
+    # ``boundary`` is the normalized "<prefix> <connector>" run, used to gate the whole-match override.
+    exact_split: tuple[dict[str, Any], str, str] | None = None  # (template, boundary, text)
     for end in range(len(tokens) - 1, 0, -1):
         prefix = _normalize(" ".join(tokens[:end]))
         if prefix not in by_normalized:
@@ -207,7 +209,8 @@ def _split_template_and_text(
             continue
         recovered = " ".join(after_connector).strip() or None
         if recovered is not None:
-            exact_split = (by_normalized[prefix], prefix, recovered)
+            boundary = _normalize(" ".join(tokens[: len(tokens) - len(after_connector)]))
+            exact_split = (by_normalized[prefix], boundary, recovered)
             break
 
     # Whole utterance as one (possibly ASR-variant) template name.
@@ -217,10 +220,14 @@ def _split_template_and_text(
     whole_name = whole_close[0] if whole_close else None
 
     if exact_split is not None:
-        template, prefix_norm, recovered = exact_split
-        # A closer whole match to a *longer* template name means the connector was part of that
-        # name ("freezer for leftover" → "freezer-for-leftovers"), not a text boundary.
-        if whole_name is not None and len(whole_name) > len(prefix_norm):
+        template, boundary, recovered = exact_split
+        # Override the exact split only when the connector is *inside* the matched template name —
+        # i.e. the whole match's name begins with "<prefix> <connector>" ("freezer for leftover" →
+        # "freezer-for-leftovers"). A connector that merely precedes text ("freezer para lasagna"
+        # with a "freezer-lasagna" template) is a real boundary: keep the exact split and its text.
+        if whole_name is not None and (
+            whole_name == boundary or whole_name.startswith(boundary + " ")
+        ):
             return by_normalized[whole_name], None
         return template, recovered
 
