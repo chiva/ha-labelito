@@ -30,6 +30,26 @@ data:
 The service supports responses: use `response_variable` to receive `{job_id, status}` where
 `status` is `printed` or `dry-run` (see [`examples/print_with_response.yaml`](../examples/print_with_response.yaml)).
 
+### Filling fields with live Home Assistant data
+
+`fields` values are ordinary service data, so Home Assistant renders any Jinja template in them
+**before** the call reaches labelito — labelito only ever receives the resolved strings. Pull in
+entity state, attributes, or `now()` directly:
+
+```yaml
+action: labelito.print
+data:
+  template: pantry
+  fields:
+    title: "{{ states('sensor.kitchen_temp') }}°C"
+    subtitle: "{{ now().strftime('%Y-%m-%d %H:%M') }}"
+```
+
+This is independent of labelito's own server-side tokens (`{{date}}`, `{{seq}}`, `[[translation]]`),
+which labelito computes itself. The template never references HA entities; the binding lives here in
+the call. To drive this from a spoken command, see
+[voice-assist.md](voice-assist.md#voice-triggered-printing-with-live-data).
+
 ### Auto-numbering (`{{seq}}`)
 
 Templates that use the `{{seq}}` token print a **numbered batch** instead of copies of one label.

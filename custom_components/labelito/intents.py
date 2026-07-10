@@ -43,6 +43,7 @@ SPEECH: dict[str, dict[str, str]] = {
             "I don't know a label template called {template}. Available templates are: {templates}."
         ),
         "no_templates": "The label printer has no templates configured.",
+        "needs_text": "I need the text to put on the {template} label.",
         "failed": "I couldn't print the label: {reason}",
     },
     "es": {
@@ -53,11 +54,18 @@ SPEECH: dict[str, dict[str, str]] = {
             "Las plantillas disponibles son: {templates}."
         ),
         "no_templates": "La impresora de etiquetas no tiene plantillas configuradas.",
+        "needs_text": "Necesito el texto para la etiqueta de {template}.",
         "failed": "No he podido imprimir la etiqueta: {reason}",
     },
 }
 
 FUZZY_MATCH_CUTOFF = 0.6
+
+# Connectors that sit between {template} and {text} in the sentence files (es: "para",
+# "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance
+# into the greedy trailing {template} wildcard (see docs/voice-assist.md), the free text is
+# recovered by stripping these leading connectors off the residue. See _split_template_and_text.
+TEXT_CONNECTORS: frozenset[str] = frozenset({"para", "que", "diga", "for", "that", "says"})
 
 
 def _speech_language(language: str | None) -> str:
@@ -82,6 +90,35 @@ def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[
         if wanted in normalized or normalized in wanted:
             return template
     return None
+
+
+def _split_template_and_text(
+    spoken: str, templates: list[dict[str, Any]]
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Resolve the template and recover any free text folded into the ``template`` wildcard.
+
+    HA's ``recognize_best`` collapses "<template> <connector> <text>" into the single greedy
+    trailing ``{template}`` wildcard for languages whose sentences lack a literal after it (see
+    docs/voice-assist.md). To recover, find the longest leading token-run that is *exactly* a known
+    template name; whatever remains (minus a leading connector) is the spoken text. Falls back to
+    :func:`_fuzzy_match_template` when the whole utterance is just a template name (or a typo of one).
+    """
+    by_normalized = {_normalize(t["name"]): t for t in templates}
+    tokens = spoken.split()
+    # Prefer the longest leading run of tokens that names a template exactly; the rest is the text.
+    for end in range(len(tokens) - 1, 0, -1):
+        prefix = _normalize(" ".join(tokens[:end]))
+        if prefix not in by_normalized:
+            continue
+        rest = tokens[end:]
+        while rest and _normalize(rest[0]) in TEXT_CONNECTORS:
+            rest = rest[1:]
+        recovered = " ".join(rest).strip() or None
+        if recovered is not None:
+            return by_normalized[prefix], recovered
+        break
+    # No "<template> <text>" split: the whole utterance is (or fuzzily resolves to) a template.
+    return _fuzzy_match_template(spoken, templates), None
 
 
 def _text_field_name(template: dict[str, Any]) -> str | None:
@@ -121,7 +158,9 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
 
         try:
             coordinator = resolve_coordinator(hass, None)
-            template = await self._async_match_template(coordinator, spoken_template)
+            template, recovered_text = await self._async_match_template(
+                coordinator, spoken_template
+            )
         except (HomeAssistantError, ServiceValidationError) as err:
             return self._error(response, speech["failed"].format(reason=err))
         if template is None:
@@ -136,6 +175,10 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
                 ),
             )
 
+        # recognize_best may have folded the free text into the template wildcard; fall back to the
+        # text recovered while resolving the template, but never clobber an explicit text slot.
+        text = text or recovered_text
+
         request: dict[str, Any] = {
             ATTR_TEMPLATE: template["name"],
             ATTR_FIELDS: {},
@@ -147,6 +190,12 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
             field_name = _text_field_name(template)
             if field_name is not None:
                 request[ATTR_FIELDS] = {field_name: text}
+
+        # A required-field template with nothing to fill would be rejected by labelito with an
+        # opaque 422; speak an actionable error instead of forwarding a doomed request.
+        required = (template.get(ATTR_FIELDS) or {}).get("required") or []
+        if required and not request[ATTR_FIELDS]:
+            return self._error(response, speech["needs_text"].format(template=template["name"]))
 
         try:
             await async_execute_print(coordinator, request)
@@ -160,14 +209,14 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
     @staticmethod
     async def _async_match_template(
         coordinator: LabelitoCoordinator, spoken: str
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, str | None]:
         templates = await coordinator.async_get_templates()
-        match = _fuzzy_match_template(spoken, templates)
+        match, recovered_text = _split_template_and_text(spoken, templates)
         if match is None:
             # Same freshness rule as the service path: a miss forces one catalog refresh.
             templates = await coordinator.async_get_templates(force_refresh=True)
-            match = _fuzzy_match_template(spoken, templates)
-        return match
+            match, recovered_text = _split_template_and_text(spoken, templates)
+        return match, recovered_text
 
     @staticmethod
     def _error(response: intent.IntentResponse, message: str) -> intent.IntentResponse:
