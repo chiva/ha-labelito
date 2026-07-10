@@ -1,12 +1,12 @@
-name: Validate
+name: HACS
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  # Daily — hassfest and HACS validation rules change over time; a nightly run surfaces breakage
-  # before the next PR.
+  # Daily — HACS validation rules change over time; a nightly run surfaces breakage before the next
+  # PR.
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
@@ -14,15 +14,6 @@ on:
 permissions: {}
 
 jobs:
-  hassfest:
-    name: Hassfest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-            persist-credentials: false
-      - uses: home-assistant/actions/hassfest@f4ca6f671bd429efb108c0f2fa0ae8af0215986c # master
-
   hacs:
     name: HACS validation
     runs-on: ubuntu-latest

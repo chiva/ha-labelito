@@ -10,8 +10,8 @@ lah-beh-LEE-toh · `/la.beˈli.to/` · a Spanish diminutive of "label"
 [![Installations](https://img.shields.io/badge/dynamic/json?color=0258b1&logo=home-assistant&logoColor=white&label=installs&query=$.labelito.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)](https://analytics.home-assistant.io/)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-0258b1.svg)](https://hacs.xyz)
 [![Latest release](https://img.shields.io/github/v/release/chiva/ha-labelito)](https://github.com/chiva/ha-labelito/releases)
-[![Validate](https://github.com/chiva/ha-labelito/actions/workflows/validate.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/validate.yml)
-[![Tests](https://github.com/chiva/ha-labelito/actions/workflows/test.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/test.yml)
+[![Hassfest](https://github.com/chiva/ha-labelito/actions/workflows/hassfest.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/hassfest.yml)
+[![HACS](https://github.com/chiva/ha-labelito/actions/workflows/hacs.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/hacs.yml)
 [![License: MIT](https://img.shields.io/github/license/chiva/ha-labelito)](LICENSE)
 
 </div>
