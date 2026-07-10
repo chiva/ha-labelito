@@ -260,6 +260,26 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
         ),
         # ...but a genuine short text after the connector is still recovered, not swallowed.
         ("pantry para si", [{"name": "pantry"}], "pantry", "si"),
+        # A LONG exact template name + a SHORT spoken value: the whole-string ratio stays above the
+        # cutoff, but the exact prefix + connector split must still win so the text is not dropped.
+        (
+            "freezer for leftovers para A1",
+            [{"name": "freezer-for-leftovers"}],
+            "freezer-for-leftovers",
+            "A1",
+        ),
+        (
+            "freezer for leftovers para A1",
+            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
+            "freezer-for-leftovers",
+            "A1",
+        ),
+        (
+            "long template name para ok",
+            [{"name": "long-template-name"}],
+            "long-template-name",
+            "ok",
+        ),
         # Step-5 substring fallback prefers the longest overlapping name over catalog order:
         # "freezer" is listed first but "freezer-dated" is the more specific match.
         (

@@ -153,13 +153,19 @@ def _split_template_and_text(
 
     1. If the *whole* utterance is exactly a template name, there is no free text — return it as is
        (so a legitimate multi-word template like ``freezer-dated`` is not split into ``freezer``).
-    2. If the whole utterance is a *very close* match to a template name (``freezer for leftover`` →
-       ``freezer-for-leftovers``), prefer it — a connector word inside a template name must not be
-       read as a text boundary. The stricter cutoff keeps real "<template> <connector> <text>"
-       commands (whose extra text lowers the whole-string ratio) out of this branch.
-    3. Otherwise find the longest leading token-run that is exactly a template name **followed by a
-       connector phrase**; the tokens after that phrase are the spoken text. Requiring the connector
-       avoids treating trailing words of a multi-word template name as text.
+    2. Find the longest leading token-run that is exactly a template name **followed by a connector
+       phrase**; the tokens after that phrase are the spoken text. This is the highest-precision
+       recovery, so it runs before the fuzzy whole-utterance match (step 3) — otherwise a long
+       template name plus a short spoken value ("freezer for leftovers para A1") keeps the
+       whole-string ratio above the cutoff and the dictated text is silently dropped. It is
+       overridden only when the whole utterance is a closer match to a *longer* template name than
+       the matched prefix — i.e. the connector sits inside that name (see step 3), not at a text
+       boundary — which keeps trailing words of a multi-word template name from being read as text.
+    3. Otherwise (or per the override above) if the whole utterance is a *very close* match to a
+       template name (``freezer for leftover`` → ``freezer-for-leftovers``), prefer it — a connector
+       word inside a template name must not be read as a text boundary. The stricter cutoff keeps
+       real "<template> <connector> <text>" commands (whose extra text lowers the whole-string
+       ratio) from wrongly landing here.
     4. Otherwise split at the first connector phrase and **fuzzy**-match the prefix before it, so an
        ASR/spelling variant ("pantri para …") still recovers the text (the intent is fuzzy by
        design). Exact matches from steps 1-3 take precedence over this.
@@ -169,13 +175,9 @@ def _split_template_and_text(
     if _normalize(spoken) in by_normalized:
         return by_normalized[_normalize(spoken)], None
 
-    whole_close = difflib.get_close_matches(
-        _normalize(spoken), list(by_normalized), n=1, cutoff=WHOLE_TEMPLATE_MATCH_CUTOFF
-    )
-    if whole_close:
-        return by_normalized[whole_close[0]], None
-
     tokens = spoken.split()
+    # Longest exact leading template name + connector phrase → the text after it (highest precision).
+    exact_split: tuple[dict[str, Any], str, str] | None = None  # (template, prefix_norm, text)
     for end in range(len(tokens) - 1, 0, -1):
         prefix = _normalize(" ".join(tokens[:end]))
         if prefix not in by_normalized:
@@ -185,7 +187,25 @@ def _split_template_and_text(
             continue
         recovered = " ".join(after_connector).strip() or None
         if recovered is not None:
-            return by_normalized[prefix], recovered
+            exact_split = (by_normalized[prefix], prefix, recovered)
+            break
+
+    # Whole utterance as one (possibly ASR-variant) template name.
+    whole_close = difflib.get_close_matches(
+        _normalize(spoken), list(by_normalized), n=1, cutoff=WHOLE_TEMPLATE_MATCH_CUTOFF
+    )
+    whole_name = whole_close[0] if whole_close else None
+
+    if exact_split is not None:
+        template, prefix_norm, recovered = exact_split
+        # A closer whole match to a *longer* template name means the connector was part of that
+        # name ("freezer for leftover" → "freezer-for-leftovers"), not a text boundary.
+        if whole_name is not None and len(whole_name) > len(prefix_norm):
+            return by_normalized[whole_name], None
+        return template, recovered
+
+    if whole_name is not None:
+        return by_normalized[whole_name], None
 
     split = _split_on_connector(tokens)
     if split is not None:
