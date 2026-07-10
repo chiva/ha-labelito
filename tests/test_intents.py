@@ -236,89 +236,41 @@ def test_split_template_and_text(
 _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
 
 
+# These lock down _split_template_and_text, which assumes template names contain NO connector words
+# (para/for/que diga/that says): the FIRST connector phrase is the template/text boundary.
 @pytest.mark.parametrize(
     ("spoken", "templates", "expected_name", "expected_text"),
     [
-        # Exact multi-word template must win over a shorter prefix — no bogus split into text.
+        # Exact multi-word template with no connector present — the whole utterance is the name.
         ("freezer dated", _OVERLAP_CATALOG, "freezer-dated", None),
-        # ...but a real overcapture on the multi-word template still recovers the text.
+        # ...and a real overcapture on that multi-word template still recovers the text.
         ("freezer dated para lasagna", _OVERLAP_CATALOG, "freezer-dated", "lasagna"),
-        # Only ONE connector phrase is stripped: text that begins with a connector word survives.
+        # Only the FIRST connector is the boundary: text may itself contain connector words.
         ("pantry para para mañana", [{"name": "pantry"}], "pantry", "para mañana"),
         # A trailing word that is not a connector is not mistaken for text (no split without one).
         ("freezer lasagna", [{"name": "freezer"}], "freezer", None),
         # ASR/spelling variant of the template before a connector still fuzzy-resolves + recovers.
         ("pantri para sopa de tomate", [{"name": "pantry"}], "pantry", "sopa de tomate"),
         ("freezr que diga lasaña", [{"name": "freezer"}], "freezer", "lasaña"),
-        # A connector word *inside* a template name is not read as a text boundary: an ASR variant
-        # of the long name wins over a shorter prefix + connector split.
-        (
-            "freezer for leftover",
-            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
-            "freezer-for-leftovers",
-            None,
-        ),
-        # ...but a genuine short text after the connector is still recovered, not swallowed.
+        # A genuine short text after the connector is recovered, not swallowed.
         ("pantry para si", [{"name": "pantry"}], "pantry", "si"),
-        # A LONG exact template name + a SHORT spoken value: the whole-string ratio stays above the
-        # cutoff, but the exact prefix + connector split must still win so the text is not dropped.
-        (
-            "freezer for leftovers para A1",
-            [{"name": "freezer-for-leftovers"}],
-            "freezer-for-leftovers",
-            "A1",
-        ),
-        (
-            "freezer for leftovers para A1",
-            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
-            "freezer-for-leftovers",
-            "A1",
-        ),
+        # Multi-word template name (no connector) + connector + short text.
         (
             "long template name para ok",
             [{"name": "long-template-name"}],
             "long-template-name",
             "ok",
         ),
-        # A FUZZY (ASR-variant) prefix of a connector-containing name + short text: the split must
-        # be found at the *real* connector ("para"), not the connector inside the name ("for"), so
-        # the text is recovered instead of the whole utterance matching the template with no text.
-        (
-            "freezer for leftover para A1",
-            [{"name": "freezer-for-leftovers"}],
-            "freezer-for-leftovers",
-            "A1",
-        ),
-        # Overlapping names where the connector is a real text boundary, NOT inside a template name:
-        # "freezer para lasagna" must stay template "freezer" + text "lasagna", even though the whole
-        # utterance fuzzy-matches the longer "freezer-lasagna" (whose name does not contain "para").
+        # Overlapping names: the first connector "para" is the boundary, so "freezer para lasagna"
+        # is template "freezer" + text "lasagna" (not the longer "freezer-lasagna").
         (
             "freezer para lasagna",
             [{"name": "freezer"}, {"name": "freezer-lasagna"}],
             "freezer",
             "lasagna",
         ),
-        # The connector IS inside the longer name, but the spoken text is independent of that name's
-        # tail: "regalo para uva" is template "regalo" + text "uva", NOT "regalo-para-navidad" (whose
-        # tail "navidad" does not match "uva"). Only a tail-like text ("leftover"≈"leftovers") wins.
-        (
-            "regalo para uva",
-            [{"name": "regalo"}, {"name": "regalo-para-navidad"}],
-            "regalo",
-            "uva",
-        ),
-        # Overlapping short + connector-containing long name with a FUZZY long prefix and real text:
-        # "freezer for leftover para A1" must pick the later "para" boundary (longer, more specific
-        # prefix "freezer for leftover" ≈ "freezer-for-leftovers"), not the exact-but-short "freezer"
-        # at "for" — so the dictated "A1" is recovered instead of dropped.
-        (
-            "freezer for leftover para A1",
-            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
-            "freezer-for-leftovers",
-            "A1",
-        ),
-        # Step-5 substring fallback prefers the longest overlapping name over catalog order:
-        # "freezer" is listed first but "freezer-dated" is the more specific match.
+        # Substring fallback in _fuzzy_match_template prefers the longest overlapping name over
+        # catalog order: "freezer" is listed first but "freezer-dated" is the more specific match.
         (
             "freezer dated uno dos tres cuatro",
             [{"name": "freezer"}, {"name": "freezer-dated"}],

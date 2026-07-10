@@ -111,6 +111,10 @@ embed an entity name in the template itself.
   the LLM takes over.
 - **Auto-numbering (`{{seq}}`) is not available by voice** — use the service or dashboard.
 - **Spanish free-text** relies on handler-side recovery (see below); English does not.
+- **Template names must not contain connector words** (*para* / *for* / *que diga* / *that says*).
+  Recovery treats the first connector as the template/text boundary, so a template literally named
+  like `regalo-para-navidad` can't be told apart from *"regalo para navidad"* (template + text) and
+  is unsupported for voice free-text.
 
 ## How the text is extracted (and why Spanish needs help)
 
@@ -130,12 +134,13 @@ in a trailing `{template}` wildcard with no literal after it, `recognize_best` p
 The connectors *para* / *que diga* can't fix this at the grammar layer: they only appear in the
 with-text sentence, and any artificial trailing anchor added to the no-text sentence would make it
 mandatory (breaking the bare *"imprime una etiqueta de pantry"*). So the recovery lives in the
-handler: `_split_template_and_text` (in `intents.py`) peels the longest leading template name off
-the `template` slot and treats the remainder — minus one leading connector phrase
-(`CONNECTOR_PHRASES`) — as the spoken text. If a required-field template still ends up with no text,
-labelito rejects it with a `missing_required` 422 (labelito stays authoritative, so a stale cached
-catalog can't wrongly veto a print), and the handler turns that into an actionable spoken prompt
-instead of the raw error.
+handler: `_split_template_and_text` (in `intents.py`) splits the `template` slot at the **first
+connector phrase** (`CONNECTOR_PHRASES`) — everything before it is the template name (matched
+exactly or fuzzily, so ASR variants like *"pantri"* still resolve), everything after is the spoken
+text. This relies on the assumption that **template names contain no connector words** (see the
+limitation below). If a required-field template still ends up with no text, labelito rejects it with
+a `missing_required` 422 (labelito stays authoritative, so a stale cached catalog can't wrongly veto
+a print), and the handler turns that into an actionable spoken prompt instead of the raw error.
 
 `tests/test_intents.py` locks this down, including a `recognize_best` regression test over the
 shipped YAML so the behavior can be re-validated if the sentence files change.
