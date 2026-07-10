@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/chiva/ha-labelito/compare/v1.0.0...v1.0.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* recover spoken text folded into the Assist template wildcard ([#20](https://github.com/chiva/ha-labelito/issues/20)) ([799c040](https://github.com/chiva/ha-labelito/commit/799c04050033c80bc314a3779a6cdb279f33a47f))
+* **voice:** recover Spanish free text + ship custom_sentences/ + README branding ([#22](https://github.com/chiva/ha-labelito/issues/22)) ([d467d72](https://github.com/chiva/ha-labelito/commit/d467d7288830f57370098cadfb42ca7ccf9abc38))
+
 ## [1.0.0](https://github.com/chiva/ha-labelito/compare/v0.2.0...v1.0.0) (2026-07-10)
 
 
