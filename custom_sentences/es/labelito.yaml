@@ -1,5 +1,6 @@
-# Copia este archivo a <config>/custom_sentences/es/labelito.yaml
-# (las integraciones no pueden incluir frases personalizadas; Home Assistant solo las carga desde config).
+# Descarga la carpeta custom_sentences/ del repositorio en <config>/ para que este archivo quede en
+# <config>/custom_sentences/es/labelito.yaml (las integraciones no pueden incluir frases
+# personalizadas; Home Assistant solo las carga desde config). Ver docs/voice-assist.md.
 language: "es"
 intents:
   LabelitoPrint:

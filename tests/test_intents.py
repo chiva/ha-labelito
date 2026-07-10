@@ -212,6 +212,21 @@ async def test_unknown_template_lists_available(hass: HomeAssistant) -> None:
     assert "pantry" in speech
 
 
+async def test_template_miss_forces_catalog_refresh_then_prints(hass: HomeAssistant) -> None:
+    """A miss on the cached catalog forces one refresh; a template new in the fresh catalog prints."""
+    coordinator = _make_coordinator()
+    coordinator.async_get_templates.side_effect = [
+        list(MOCK_TEMPLATES),
+        [*MOCK_TEMPLATES, {"name": "seasonal"}],
+    ]
+
+    _, execute = await _handle(hass, {"template": "seasonal"}, coordinator=coordinator)
+
+    assert _printed_request(execute)["template"] == "seasonal"
+    assert coordinator.async_get_templates.await_count == 2
+    assert coordinator.async_get_templates.await_args_list[1].kwargs == {"force_refresh": True}
+
+
 # --- the split helper in isolation ----------------------------------------------------------
 
 
@@ -236,32 +251,49 @@ def test_split_template_and_text(
 _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
 
 
+# These lock down _split_template_and_text, which assumes template names contain NO connector words
+# (para/for/que diga/that says): the FIRST connector phrase is the template/text boundary.
 @pytest.mark.parametrize(
     ("spoken", "templates", "expected_name", "expected_text"),
     [
-        # Exact multi-word template must win over a shorter prefix — no bogus split into text.
+        # Exact multi-word template with no connector present — the whole utterance is the name.
         ("freezer dated", _OVERLAP_CATALOG, "freezer-dated", None),
-        # ...but a real overcapture on the multi-word template still recovers the text.
+        # ...and a real overcapture on that multi-word template still recovers the text.
         ("freezer dated para lasagna", _OVERLAP_CATALOG, "freezer-dated", "lasagna"),
-        # Only ONE connector phrase is stripped: text that begins with a connector word survives.
+        # An exactly-spoken template name wins even when it CONTAINS a connector word: "gift for
+        # christmas" is the whole template, not "gift" + text "christmas".
+        (
+            "gift for christmas",
+            [{"name": "gift"}, {"name": "gift-for-christmas"}],
+            "gift-for-christmas",
+            None,
+        ),
+        # Only the FIRST connector is the boundary: text may itself contain connector words.
         ("pantry para para mañana", [{"name": "pantry"}], "pantry", "para mañana"),
         # A trailing word that is not a connector is not mistaken for text (no split without one).
         ("freezer lasagna", [{"name": "freezer"}], "freezer", None),
         # ASR/spelling variant of the template before a connector still fuzzy-resolves + recovers.
         ("pantri para sopa de tomate", [{"name": "pantry"}], "pantry", "sopa de tomate"),
         ("freezr que diga lasaña", [{"name": "freezer"}], "freezer", "lasaña"),
-        # A connector word *inside* a template name is not read as a text boundary: an ASR variant
-        # of the long name wins over a shorter prefix + connector split.
-        (
-            "freezer for leftover",
-            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
-            "freezer-for-leftovers",
-            None,
-        ),
-        # ...but a genuine short text after the connector is still recovered, not swallowed.
+        # A genuine short text after the connector is recovered, not swallowed.
         ("pantry para si", [{"name": "pantry"}], "pantry", "si"),
-        # Step-5 substring fallback prefers the longest overlapping name over catalog order:
-        # "freezer" is listed first but "freezer-dated" is the more specific match.
+        # Multi-word template name (no connector) + connector + short text.
+        (
+            "long template name para ok",
+            [{"name": "long-template-name"}],
+            "long-template-name",
+            "ok",
+        ),
+        # Overlapping names: the first connector "para" is the boundary, so "freezer para lasagna"
+        # is template "freezer" + text "lasagna" (not the longer "freezer-lasagna").
+        (
+            "freezer para lasagna",
+            [{"name": "freezer"}, {"name": "freezer-lasagna"}],
+            "freezer",
+            "lasagna",
+        ),
+        # Substring fallback in _fuzzy_match_template prefers the longest overlapping name over
+        # catalog order: "freezer" is listed first but "freezer-dated" is the more specific match.
         (
             "freezer dated uno dos tres cuatro",
             [{"name": "freezer"}, {"name": "freezer-dated"}],
@@ -300,7 +332,7 @@ def test_hassil_recognize_best_folds_spanish_text_into_template() -> None:
     repo = pathlib.Path(__file__).resolve().parent.parent
 
     def best(lang: str, utterance: str) -> dict[str, str] | None:
-        data = yaml.safe_load((repo / "sentences" / lang / "labelito.yaml").read_text())
+        data = yaml.safe_load((repo / "custom_sentences" / lang / "labelito.yaml").read_text())
         intents = hassil.Intents.from_dict(data)
         result = recognize_best(
             utterance,

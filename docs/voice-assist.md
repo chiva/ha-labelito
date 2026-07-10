@@ -1,13 +1,28 @@
 # Voice (Assist)
 
-Integrations cannot bundle custom sentences, so copy the shipped sentence files into your config
-once:
+HACS installs the integration only — Home Assistant loads custom sentences exclusively from your
+config folder ([official docs][custom-sentences]), so the sentence files have to be added by hand
+once. Download the [`custom_sentences/`](../custom_sentences) folder from this repository and drop
+it into your `<config>` directory so the files land at:
+
+```text
+<config>/custom_sentences/en/labelito.yaml
+<config>/custom_sentences/es/labelito.yaml
+```
+
+On **Core** or **Container** installs, run this from the folder where you downloaded the repo's
+`custom_sentences/` directory, setting `CONFIG` to your Home Assistant config directory:
 
 ```bash
-mkdir -p config/custom_sentences/en config/custom_sentences/es
-cp sentences/en/labelito.yaml config/custom_sentences/en/
-cp sentences/es/labelito.yaml config/custom_sentences/es/
+CONFIG=/path/to/home-assistant/config
+mkdir -p "$CONFIG"/custom_sentences/en "$CONFIG"/custom_sentences/es
+cp custom_sentences/en/labelito.yaml "$CONFIG"/custom_sentences/en/
+cp custom_sentences/es/labelito.yaml "$CONFIG"/custom_sentences/es/
 ```
+
+On **Home Assistant OS / Supervised**, if you don't have shell access (e.g. via the Terminal & SSH
+add-on), use the **File editor**, **Samba**, or **Studio Code Server** add-on to create
+`custom_sentences/<lang>/` under `/config` and upload the two files.
 
 Reload Home Assistant (or restart), then say things like:
 
@@ -96,6 +111,11 @@ embed an entity name in the template itself.
   the LLM takes over.
 - **Auto-numbering (`{{seq}}`) is not available by voice** — use the service or dashboard.
 - **Spanish free-text** relies on handler-side recovery (see below); English does not.
+- **Template names should not contain connector words** (*para* / *for* / *que diga* / *that says*)
+  if you want free text with them. An exactly-spoken name always resolves (even one with a
+  connector), but recovery treats the first connector as the template/text boundary — so a template
+  named `regalo-para-navidad` used *with* dictated text can't be told apart from *"regalo para
+  &lt;text&gt;"* (template `regalo` + text).
 
 ## How the text is extracted (and why Spanish needs help)
 
@@ -115,12 +135,19 @@ in a trailing `{template}` wildcard with no literal after it, `recognize_best` p
 The connectors *para* / *que diga* can't fix this at the grammar layer: they only appear in the
 with-text sentence, and any artificial trailing anchor added to the no-text sentence would make it
 mandatory (breaking the bare *"imprime una etiqueta de pantry"*). So the recovery lives in the
-handler: `_split_template_and_text` (in `intents.py`) peels the longest leading template name off
-the `template` slot and treats the remainder — minus one leading connector phrase
-(`CONNECTOR_PHRASES`) — as the spoken text. If a required-field template still ends up with no text,
-labelito rejects it with a `missing_required` 422 (labelito stays authoritative, so a stale cached
-catalog can't wrongly veto a print), and the handler turns that into an actionable spoken prompt
-instead of the raw error.
+handler: `_split_template_and_text` (in `intents.py`) splits the `template` slot at the **first
+connector phrase** (`CONNECTOR_PHRASES`) — everything before it is the template name (matched
+exactly or fuzzily, so ASR variants like *"pantri"* still resolve), everything after is the spoken
+text. This relies on the assumption that **template names contain no connector words** (see the
+limitation below). If a required-field template still ends up with no text, labelito rejects it with
+a `missing_required` 422 (labelito stays authoritative, so a stale cached catalog can't wrongly veto
+a print), and the handler turns that into an actionable spoken prompt instead of the raw error.
 
 `tests/test_intents.py` locks this down, including a `recognize_best` regression test over the
 shipped YAML so the behavior can be re-validated if the sentence files change.
+
+## Reference
+
+- Home Assistant — [Custom sentences (YAML): file layout, structure, and customizing responses][custom-sentences].
+
+[custom-sentences]: https://www.home-assistant.io/voice_control/custom_sentences_yaml/#customizing-responses

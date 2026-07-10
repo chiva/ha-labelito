@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The LabelitoPrint intent: voice-driven label printing via Assist.
 
-Requires the user to copy the shipped ``sentences/`` files into
+Requires the user to copy the shipped ``custom_sentences/`` files into
 ``<config>/custom_sentences/<lang>/`` — integrations cannot bundle custom sentences.
 """
 
@@ -66,12 +66,6 @@ SPEECH: dict[str, dict[str, str]] = {
 
 FUZZY_MATCH_CUTOFF = 0.6
 
-# Stricter cutoff for accepting the *whole* utterance as one template name before attempting a
-# connector split. High on purpose: it must fire for an ASR variant of a connector-containing name
-# ("freezer for leftover" → "freezer-for-leftovers") without swallowing a real "<template>
-# <connector> <text>" command, where the added text pushes the whole-string ratio well below this.
-WHOLE_TEMPLATE_MATCH_CUTOFF = 0.8
-
 # Connector phrases that sit between {template} and {text} in the sentence files (es: "para",
 # "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance into
 # the greedy trailing {template} wildcard (see docs/voice-assist.md), exactly one of these leading
@@ -95,16 +89,18 @@ def _normalize(name: str) -> str:
 
 
 def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Match a spoken template name against the catalog: exact, then close, then substring."""
+    """Match a spoken template name against the catalog: exact, then substring, then fuzzy close.
+
+    Substring containment is checked before the generic ``get_close_matches`` pass: full containment
+    (the spoken value is a substring of a template name, or vice versa) is a stronger signal than a
+    fuzzy ratio, so "gift" resolves to a ``gift-box`` template rather than a coincidental typo
+    neighbour like ``grift``. The longest overlapping name wins, so an overlapping catalog (e.g.
+    freezer / freezer-dated) resolves to the more specific template regardless of catalog order.
+    """
     by_normalized = {_normalize(t["name"]): t for t in templates}
     wanted = _normalize(spoken)
     if wanted in by_normalized:
         return by_normalized[wanted]
-    close = difflib.get_close_matches(wanted, list(by_normalized), n=1, cutoff=FUZZY_MATCH_CUTOFF)
-    if close:
-        return by_normalized[close[0]]
-    # Prefer the longest overlapping name so an overlapping catalog (e.g. freezer / freezer-dated)
-    # resolves to the more specific template regardless of catalog order.
     substring_matches = [
         (len(normalized), template)
         for normalized, template in by_normalized.items()
@@ -112,33 +108,9 @@ def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[
     ]
     if substring_matches:
         return max(substring_matches, key=lambda item: item[0])[1]
-    return None
-
-
-def _strip_leading_connector(tokens: list[str]) -> list[str] | None:
-    """If ``tokens`` begins with a connector phrase, return the tokens after it, else ``None``.
-
-    Exactly one phrase is stripped (longest match wins), so text that itself starts with a connector
-    word — e.g. "para para mañana" → "para mañana" — keeps the rest intact.
-    """
-    normalized = [_normalize(token) for token in tokens]
-    for phrase in CONNECTOR_PHRASES:
-        if tuple(normalized[: len(phrase)]) == phrase:
-            return tokens[len(phrase) :]
-    return None
-
-
-def _split_on_connector(tokens: list[str]) -> tuple[list[str], list[str]] | None:
-    """Split ``tokens`` at the first connector phrase into (before, after), or ``None`` if absent.
-
-    Used as the fallback boundary when no leading token-run is an *exact* template name, so a fuzzy
-    template prefix ("pantri para …") can still be recovered. Requires ≥1 token before the connector.
-    """
-    normalized = [_normalize(token) for token in tokens]
-    for index in range(1, len(tokens)):
-        for phrase in CONNECTOR_PHRASES:
-            if tuple(normalized[index : index + len(phrase)]) == phrase:
-                return tokens[:index], tokens[index + len(phrase) :]
+    close = difflib.get_close_matches(wanted, list(by_normalized), n=1, cutoff=FUZZY_MATCH_CUTOFF)
+    if close:
+        return by_normalized[close[0]]
     return None
 
 
@@ -149,51 +121,35 @@ def _split_template_and_text(
 
     HA's ``recognize_best`` collapses "<template> <connector> <text>" into the single greedy
     trailing ``{template}`` wildcard for languages whose sentences lack a literal after it (see
-    docs/voice-assist.md). Resolution order:
+    docs/voice-assist.md).
 
-    1. If the *whole* utterance is exactly a template name, there is no free text — return it as is
-       (so a legitimate multi-word template like ``freezer-dated`` is not split into ``freezer``).
-    2. If the whole utterance is a *very close* match to a template name (``freezer for leftover`` →
-       ``freezer-for-leftovers``), prefer it — a connector word inside a template name must not be
-       read as a text boundary. The stricter cutoff keeps real "<template> <connector> <text>"
-       commands (whose extra text lowers the whole-string ratio) out of this branch.
-    3. Otherwise find the longest leading token-run that is exactly a template name **followed by a
-       connector phrase**; the tokens after that phrase are the spoken text. Requiring the connector
-       avoids treating trailing words of a multi-word template name as text.
-    4. Otherwise split at the first connector phrase and **fuzzy**-match the prefix before it, so an
-       ASR/spelling variant ("pantri para …") still recovers the text (the intent is fuzzy by
-       design). Exact matches from steps 1-3 take precedence over this.
-    5. Fall back to :func:`_fuzzy_match_template` on the whole utterance (no free text recovered).
+    An exactly-spoken template name always wins first — even one that contains connector words — so
+    "gift for christmas" resolves to a ``gift-for-christmas`` template rather than ``gift`` + text.
+
+    Otherwise, **template names are assumed to contain no connector words** (``para``/``for``/``que
+    diga``/``that says``): the *first* connector phrase is then the template/text boundary —
+    everything before it is the template name (matched exactly or fuzzily, so ASR variants like
+    "pantri" still resolve), everything after is the spoken text (which may itself contain
+    connectors — only the first is consumed). With no connector, the whole utterance is a template
+    name and there is no free text.
     """
     by_normalized = {_normalize(t["name"]): t for t in templates}
     if _normalize(spoken) in by_normalized:
         return by_normalized[_normalize(spoken)], None
 
-    whole_close = difflib.get_close_matches(
-        _normalize(spoken), list(by_normalized), n=1, cutoff=WHOLE_TEMPLATE_MATCH_CUTOFF
-    )
-    if whole_close:
-        return by_normalized[whole_close[0]], None
-
     tokens = spoken.split()
-    for end in range(len(tokens) - 1, 0, -1):
-        prefix = _normalize(" ".join(tokens[:end]))
-        if prefix not in by_normalized:
+    normalized = [_normalize(token) for token in tokens]
+    for index in range(1, len(tokens)):
+        phrase = next(
+            (p for p in CONNECTOR_PHRASES if tuple(normalized[index : index + len(p)]) == p),
+            None,
+        )
+        if phrase is None:
             continue
-        after_connector = _strip_leading_connector(tokens[end:])
-        if after_connector is None:
-            continue
-        recovered = " ".join(after_connector).strip() or None
-        if recovered is not None:
-            return by_normalized[prefix], recovered
-
-    split = _split_on_connector(tokens)
-    if split is not None:
-        prefix_tokens, text_tokens = split
-        template = _fuzzy_match_template(" ".join(prefix_tokens), templates)
-        recovered = " ".join(text_tokens).strip() or None
-        if template is not None and recovered is not None:
-            return template, recovered
+        template = _fuzzy_match_template(" ".join(tokens[:index]), templates)
+        if template is not None:
+            return template, " ".join(tokens[index + len(phrase) :]).strip() or None
+        break  # first connector's prefix did not resolve — fall back to a whole-utterance match
 
     return _fuzzy_match_template(spoken, templates), None
 
