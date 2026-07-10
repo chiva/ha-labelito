@@ -1,5 +1,6 @@
-# Copy this file to <config>/custom_sentences/en/labelito.yaml
-# (integrations cannot ship custom sentences; Home Assistant only loads them from config).
+# Download the repo's custom_sentences/ folder into <config>/ so this lands at
+# <config>/custom_sentences/en/labelito.yaml (integrations cannot ship custom sentences;
+# Home Assistant only loads them from config). See docs/voice-assist.md.
 language: "en"
 intents:
   LabelitoPrint:

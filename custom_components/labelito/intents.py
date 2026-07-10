@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The LabelitoPrint intent: voice-driven label printing via Assist.
 
-Requires the user to copy the shipped ``sentences/`` files into
+Requires the user to copy the shipped ``custom_sentences/`` files into
 ``<config>/custom_sentences/<lang>/`` — integrations cannot bundle custom sentences.
 """
 

@@ -300,7 +300,7 @@ def test_hassil_recognize_best_folds_spanish_text_into_template() -> None:
     repo = pathlib.Path(__file__).resolve().parent.parent
 
     def best(lang: str, utterance: str) -> dict[str, str] | None:
-        data = yaml.safe_load((repo / "sentences" / lang / "labelito.yaml").read_text())
+        data = yaml.safe_load((repo / "custom_sentences" / lang / "labelito.yaml").read_text())
         intents = hassil.Intents.from_dict(data)
         result = recognize_best(
             utterance,

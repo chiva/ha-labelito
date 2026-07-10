@@ -1,13 +1,26 @@
 # Voice (Assist)
 
-Integrations cannot bundle custom sentences, so copy the shipped sentence files into your config
-once:
+HACS installs the integration only — Home Assistant loads custom sentences exclusively from your
+config folder ([official docs][custom-sentences]), so the sentence files have to be added by hand
+once. Download the [`custom_sentences/`](../custom_sentences) folder from this repository and drop
+it into your `<config>` directory so the files land at:
+
+```text
+<config>/custom_sentences/en/labelito.yaml
+<config>/custom_sentences/es/labelito.yaml
+```
+
+On **Core** or **Container** installs (you have a shell at the config root):
 
 ```bash
 mkdir -p config/custom_sentences/en config/custom_sentences/es
-cp sentences/en/labelito.yaml config/custom_sentences/en/
-cp sentences/es/labelito.yaml config/custom_sentences/es/
+cp custom_sentences/en/labelito.yaml config/custom_sentences/en/
+cp custom_sentences/es/labelito.yaml config/custom_sentences/es/
 ```
+
+On **Home Assistant OS / Supervised** there is no shell — use the **File editor**, **Samba**, or
+**Studio Code Server** add-on to create `custom_sentences/<lang>/` under `/config` and upload the
+two files.
 
 Reload Home Assistant (or restart), then say things like:
 
@@ -124,3 +137,9 @@ instead of the raw error.
 
 `tests/test_intents.py` locks this down, including a `recognize_best` regression test over the
 shipped YAML so the behavior can be re-validated if the sentence files change.
+
+## Reference
+
+- Home Assistant — [Custom sentences (YAML): file layout, structure, and customizing responses][custom-sentences].
+
+[custom-sentences]: https://www.home-assistant.io/voice_control/custom_sentences_yaml/#customizing-responses
