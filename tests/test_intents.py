@@ -299,13 +299,23 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
             "lasagna",
         ),
         # The connector IS inside the longer name, but the spoken text is independent of that name's
-        # tail: "regalo para ana" is template "regalo" + text "ana", NOT "regalo-para-navidad" (whose
-        # tail "navidad" does not match "ana"). Only a tail-like text ("leftover"≈"leftovers") wins.
+        # tail: "regalo para uva" is template "regalo" + text "uva", NOT "regalo-para-navidad" (whose
+        # tail "navidad" does not match "uva"). Only a tail-like text ("leftover"≈"leftovers") wins.
         (
-            "regalo para ana",
+            "regalo para uva",
             [{"name": "regalo"}, {"name": "regalo-para-navidad"}],
             "regalo",
-            "ana",
+            "uva",
+        ),
+        # Overlapping short + connector-containing long name with a FUZZY long prefix and real text:
+        # "freezer for leftover para A1" must pick the later "para" boundary (longer, more specific
+        # prefix "freezer for leftover" ≈ "freezer-for-leftovers"), not the exact-but-short "freezer"
+        # at "for" — so the dictated "A1" is recovered instead of dropped.
+        (
+            "freezer for leftover para A1",
+            [{"name": "freezer"}, {"name": "freezer-for-leftovers"}],
+            "freezer-for-leftovers",
+            "A1",
         ),
         # Step-5 substring fallback prefers the longest overlapping name over catalog order:
         # "freezer" is listed first but "freezer-dated" is the more specific match.

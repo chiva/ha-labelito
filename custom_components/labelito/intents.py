@@ -128,6 +128,25 @@ def _strip_leading_connector(tokens: list[str]) -> list[str] | None:
     return None
 
 
+def _has_internal_connector(tokens: list[str]) -> bool:
+    """True if a connector phrase begins *after* the first token with content following it.
+
+    Such a mid-run boundary means a better (further-right) split exists, so a leading exact-template
+    match that would leave this run as its recovered "text" is rejected in favour of that later
+    split — e.g. exact "freezer" in "freezer for leftover para A1" leaves "leftover para A1", whose
+    inner ``para`` signals the real boundary belongs to the longer "freezer-for-leftovers" prefix.
+    """
+    normalized = [_normalize(token) for token in tokens]
+    for index in range(1, len(tokens)):
+        for phrase in CONNECTOR_PHRASES:
+            if (
+                tuple(normalized[index : index + len(phrase)]) == phrase
+                and tokens[index + len(phrase) :]
+            ):
+                return True
+    return False
+
+
 def _best_connector_split(
     tokens: list[str], templates: list[dict[str, Any]]
 ) -> tuple[float, dict[str, Any], str] | None:
@@ -135,32 +154,42 @@ def _best_connector_split(
 
     Used as the fuzzy fallback when no leading token-run is an *exact* template name, so a fuzzy
     template prefix ("pantri para …") can still be recovered. Every connector position with non-empty
-    trailing text is a candidate; the one whose prefix fuzzy-matches a template most closely wins.
-    Considering *all* positions (not just the first connector) is what lets a multi-word name that
-    itself contains a connector word be recovered: "freezer for leftover para A1" splits at ``para``
-    (prefix "freezer for leftover" ≈ "freezer-for-leftovers") rather than at the earlier ``for``.
+    trailing text is a candidate. Considering *all* positions (not just the first connector) is what
+    lets a multi-word name that itself contains a connector word be recovered: "freezer for leftover
+    para A1" splits at ``para`` (prefix "freezer for leftover" ≈ "freezer-for-leftovers"), not at the
+    earlier ``for``. Among candidates whose prefix matches *strongly* (≥ the whole cutoff) the
+    **longest** prefix wins — the most specific template — so an exact match on a short overlapping
+    name ("freezer") does not beat a near-exact match on a longer one ("freezer-for-leftovers").
+    Otherwise the closest match wins.
 
     Returns ``(confidence, template, text)`` where confidence is the difflib ratio of the normalized
     prefix against the matched template name, so callers can gate on match strength.
     """
     normalized = [_normalize(token) for token in tokens]
-    best: tuple[float, dict[str, Any], str] | None = None
+    candidates: list[
+        tuple[float, int, dict[str, Any], str]
+    ] = []  # (conf, prefix_len, template, text)
     for index in range(1, len(tokens)):
         for phrase in CONNECTOR_PHRASES:
             if tuple(normalized[index : index + len(phrase)]) != phrase:
                 continue
             text = " ".join(tokens[index + len(phrase) :]).strip()
             if text:
-                prefix = " ".join(tokens[:index])
+                prefix = _normalize(" ".join(tokens[:index]))
                 template = _fuzzy_match_template(prefix, templates)
                 if template is not None:
                     confidence = difflib.SequenceMatcher(
-                        None, _normalize(prefix), _normalize(template["name"])
+                        None, prefix, _normalize(template["name"])
                     ).ratio()
-                    if best is None or confidence > best[0]:
-                        best = (confidence, template, text)
+                    candidates.append((confidence, len(prefix), template, text))
             break
-    return best
+    if not candidates:
+        return None
+    strong = [c for c in candidates if c[0] >= WHOLE_TEMPLATE_MATCH_CUTOFF]
+    chosen = (
+        max(strong, key=lambda c: (c[1], c[0])) if strong else max(candidates, key=lambda c: c[0])
+    )
+    return (chosen[0], chosen[2], chosen[3])
 
 
 def _split_template_and_text(
@@ -181,11 +210,13 @@ def _split_template_and_text(
        overridden by the whole match (step 4) only when that name reads "<prefix> <connector>
        <tail>" *and* the recovered text fuzzy-matches <tail> — i.e. the connector is inside the name
        and the "text" is really a corrupted tail ("freezer for leftover" → "freezer-for-leftovers").
-       Independent text ("regalo para ana" vs "regalo-para-navidad") keeps the split and its text.
-    3. Otherwise take the highest-confidence fuzzy connector split (:func:`_best_connector_split`)
-       when its prefix match is strong (≥ the whole cutoff): this recovers text even when the prefix
-       is an ASR/spelling variant of a multi-word name ("pantri para …", "freezer for leftover para
-       A1"), and beats the whole match, which would otherwise drop the text.
+       Independent text ("regalo para uva" vs "regalo-para-navidad") keeps the split and its text.
+       A short exact prefix whose recovered text still hides a connector boundary is rejected here,
+       so a longer fuzzy prefix further right (step 3) can win.
+    3. Otherwise take the best fuzzy connector split (:func:`_best_connector_split`, which prefers
+       the longest strong-confidence prefix) when its match is strong (≥ the whole cutoff): this
+       recovers text even when the prefix is an ASR/spelling variant of a multi-word name ("pantri
+       para …", "freezer for leftover para A1"), and beats the whole match, which would drop the text.
     4. Otherwise, if the whole utterance is a *very close* match to a template name ("freezer for
        leftover" → "freezer-for-leftovers"), prefer it — a connector word inside a template name must
        not be read as a text boundary. The stricter cutoff keeps real "<template> <connector> <text>"
@@ -209,7 +240,9 @@ def _split_template_and_text(
         if after_connector is None:
             continue
         recovered = " ".join(after_connector).strip() or None
-        if recovered is not None:
+        # Reject a short exact prefix whose "text" hides a further connector boundary: a longer
+        # (fuzzy) prefix split further right is the real intent (handled by _best_connector_split).
+        if recovered is not None and not _has_internal_connector(after_connector):
             boundary = _normalize(" ".join(tokens[: len(tokens) - len(after_connector)]))
             exact_split = (by_normalized[prefix], boundary, recovered)
             break
@@ -226,7 +259,7 @@ def _split_template_and_text(
         # the whole match reads "<prefix> <connector> <tail>" AND the recovered text is really a
         # (possibly ASR-corrupted) rendering of that tail — e.g. "freezer for leftover" →
         # "freezer-for-leftovers" ("leftover" ≈ "leftovers"). When the text is independent of the
-        # tail ("regalo para ana" vs "regalo-para-navidad", "freezer para lasagna" vs
+        # tail ("regalo para uva" vs "regalo-para-navidad", "freezer para lasagna" vs
         # "freezer-lasagna") the connector is a real boundary, so the exact split and its text stand.
         if whole_name is not None and whole_name.startswith(boundary + " "):
             tail = whole_name[len(boundary) + 1 :]
