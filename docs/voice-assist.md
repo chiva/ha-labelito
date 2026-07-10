@@ -111,10 +111,11 @@ embed an entity name in the template itself.
   the LLM takes over.
 - **Auto-numbering (`{{seq}}`) is not available by voice** — use the service or dashboard.
 - **Spanish free-text** relies on handler-side recovery (see below); English does not.
-- **Template names must not contain connector words** (*para* / *for* / *que diga* / *that says*).
-  Recovery treats the first connector as the template/text boundary, so a template literally named
-  like `regalo-para-navidad` can't be told apart from *"regalo para navidad"* (template + text) and
-  is unsupported for voice free-text.
+- **Template names should not contain connector words** (*para* / *for* / *que diga* / *that says*)
+  if you want free text with them. An exactly-spoken name always resolves (even one with a
+  connector), but recovery treats the first connector as the template/text boundary — so a template
+  named `regalo-para-navidad` used *with* dictated text can't be told apart from *"regalo para
+  &lt;text&gt;"* (template `regalo` + text).
 
 ## How the text is extracted (and why Spanish needs help)
 

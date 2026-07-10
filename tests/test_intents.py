@@ -245,6 +245,14 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
         ("freezer dated", _OVERLAP_CATALOG, "freezer-dated", None),
         # ...and a real overcapture on that multi-word template still recovers the text.
         ("freezer dated para lasagna", _OVERLAP_CATALOG, "freezer-dated", "lasagna"),
+        # An exactly-spoken template name wins even when it CONTAINS a connector word: "gift for
+        # christmas" is the whole template, not "gift" + text "christmas".
+        (
+            "gift for christmas",
+            [{"name": "gift"}, {"name": "gift-for-christmas"}],
+            "gift-for-christmas",
+            None,
+        ),
         # Only the FIRST connector is the boundary: text may itself contain connector words.
         ("pantry para para mañana", [{"name": "pantry"}], "pantry", "para mañana"),
         # A trailing word that is not a connector is not mistaken for text (no split without one).

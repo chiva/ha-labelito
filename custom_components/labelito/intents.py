@@ -118,13 +118,20 @@ def _split_template_and_text(
     trailing ``{template}`` wildcard for languages whose sentences lack a literal after it (see
     docs/voice-assist.md).
 
-    **Template names are assumed to contain no connector words** (``para``/``for``/``que diga``/
-    ``that says``). Given that, the *first* connector phrase is unambiguously the template/text
-    boundary: everything before it is the template name (matched exactly or fuzzily, so ASR variants
-    like "pantri" still resolve), everything after it is the spoken text (which may itself contain
+    An exactly-spoken template name always wins first — even one that contains connector words — so
+    "gift for christmas" resolves to a ``gift-for-christmas`` template rather than ``gift`` + text.
+
+    Otherwise, **template names are assumed to contain no connector words** (``para``/``for``/``que
+    diga``/``that says``): the *first* connector phrase is then the template/text boundary —
+    everything before it is the template name (matched exactly or fuzzily, so ASR variants like
+    "pantri" still resolve), everything after is the spoken text (which may itself contain
     connectors — only the first is consumed). With no connector, the whole utterance is a template
     name and there is no free text.
     """
+    by_normalized = {_normalize(t["name"]): t for t in templates}
+    if _normalize(spoken) in by_normalized:
+        return by_normalized[_normalize(spoken)], None
+
     tokens = spoken.split()
     normalized = [_normalize(token) for token in tokens]
     for index in range(1, len(tokens)):
