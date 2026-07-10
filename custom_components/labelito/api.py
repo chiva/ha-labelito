@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Async HTTP client for the labelito API.
 
-Deliberately free of Home Assistant imports (aiohttp only) so it can be exercised standalone.
-Endpoint paths, request bodies, and error-detail shapes mirror labelito's app/main.py and
-app/models.py exactly.
+Deliberately free of Home Assistant imports so it can be exercised standalone (only aiohttp and the
+framework-free ``.const`` are imported). Endpoint paths, request bodies, and error-detail shapes
+mirror labelito's app/main.py and app/models.py exactly.
 """
 
 from __future__ import annotations
@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 import aiohttp
+
+from .const import ATTR_SEQUENCE, SEQ_KEY_COUNT
 
 PATH_HEALTH = "/health"
 PATH_PRINTER_STATUS = "/printer/status"
@@ -164,8 +166,8 @@ class LabelitoClient:
 
         A ``sequence`` batch prints ``sequence.count`` labels one at a time, so the timeout is
         scaled to the item count to avoid false-timing-out a large but successful batch."""
-        sequence = request.get("sequence")
-        label_count = sequence.get("count", 1) if isinstance(sequence, dict) else 1
+        sequence = request.get(ATTR_SEQUENCE)
+        label_count = sequence.get(SEQ_KEY_COUNT, 1) if isinstance(sequence, dict) else 1
         result: dict[str, Any] = await self._request(
             "POST", PATH_PRINT, json_body=request, timeout=_print_timeout(label_count)
         )
