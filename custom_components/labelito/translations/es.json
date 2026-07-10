@@ -143,6 +143,28 @@
         "config_entry_id": {
           "name": "Instancia de labelito",
           "description": "Qué servicio labelito configurado usar. Solo necesario con varias instancias."
+        },
+        "seq_count": {
+          "name": "Cantidad",
+          "description": "Número de etiquetas del lote numerado (1-500). Al indicarlo, la impresión pasa a ser una secuencia; déjalo vacío para una impresión normal."
+        },
+        "seq_start": {
+          "name": "Inicio",
+          "description": "Primer número de la secuencia. Por defecto 1 en el servidor."
+        },
+        "seq_step": {
+          "name": "Paso",
+          "description": "Incremento entre números consecutivos (>= 1). Por defecto 1 en el servidor."
+        },
+        "seq_padding": {
+          "name": "Relleno",
+          "description": "Ancho mínimo de dígitos, rellenado con ceros (3 muestra 1 como \"001\"); 0-32, 0 sin relleno. Por defecto 0 en el servidor."
+        }
+      },
+      "sections": {
+        "sequence": {
+          "name": "Numeración automática",
+          "description": "Imprime un lote numerado (con una plantilla {{seq}}) en lugar de copias de una etiqueta. Indica Cantidad para activarlo; sustituye a \"copias\"."
         }
       }
     },
