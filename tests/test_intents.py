@@ -280,6 +280,15 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
             "long-template-name",
             "ok",
         ),
+        # A FUZZY (ASR-variant) prefix of a connector-containing name + short text: the split must
+        # be found at the *real* connector ("para"), not the connector inside the name ("for"), so
+        # the text is recovered instead of the whole utterance matching the template with no text.
+        (
+            "freezer for leftover para A1",
+            [{"name": "freezer-for-leftovers"}],
+            "freezer-for-leftovers",
+            "A1",
+        ),
         # Step-5 substring fallback prefers the longest overlapping name over catalog order:
         # "freezer" is listed first but "freezer-dated" is the more specific match.
         (

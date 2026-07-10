@@ -10,12 +10,14 @@ it into your `<config>` directory so the files land at:
 <config>/custom_sentences/es/labelito.yaml
 ```
 
-On **Core** or **Container** installs (you have a shell at the config root):
+On **Core** or **Container** installs (you have shell access), run this from the folder where you
+downloaded the repo's `custom_sentences/` directory, with `<config>` set to your Home Assistant
+config directory:
 
 ```bash
-mkdir -p config/custom_sentences/en config/custom_sentences/es
-cp custom_sentences/en/labelito.yaml config/custom_sentences/en/
-cp custom_sentences/es/labelito.yaml config/custom_sentences/es/
+mkdir -p <config>/custom_sentences/en <config>/custom_sentences/es
+cp custom_sentences/en/labelito.yaml <config>/custom_sentences/en/
+cp custom_sentences/es/labelito.yaml <config>/custom_sentences/es/
 ```
 
 On **Home Assistant OS / Supervised** there is no shell — use the **File editor**, **Samba**, or

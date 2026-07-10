@@ -128,18 +128,39 @@ def _strip_leading_connector(tokens: list[str]) -> list[str] | None:
     return None
 
 
-def _split_on_connector(tokens: list[str]) -> tuple[list[str], list[str]] | None:
-    """Split ``tokens`` at the first connector phrase into (before, after), or ``None`` if absent.
+def _best_connector_split(
+    tokens: list[str], templates: list[dict[str, Any]]
+) -> tuple[float, dict[str, Any], str] | None:
+    """The connector-boundary split whose prefix best matches a template, or ``None``.
 
-    Used as the fallback boundary when no leading token-run is an *exact* template name, so a fuzzy
-    template prefix ("pantri para …") can still be recovered. Requires ≥1 token before the connector.
+    Used as the fuzzy fallback when no leading token-run is an *exact* template name, so a fuzzy
+    template prefix ("pantri para …") can still be recovered. Every connector position with non-empty
+    trailing text is a candidate; the one whose prefix fuzzy-matches a template most closely wins.
+    Considering *all* positions (not just the first connector) is what lets a multi-word name that
+    itself contains a connector word be recovered: "freezer for leftover para A1" splits at ``para``
+    (prefix "freezer for leftover" ≈ "freezer-for-leftovers") rather than at the earlier ``for``.
+
+    Returns ``(confidence, template, text)`` where confidence is the difflib ratio of the normalized
+    prefix against the matched template name, so callers can gate on match strength.
     """
     normalized = [_normalize(token) for token in tokens]
+    best: tuple[float, dict[str, Any], str] | None = None
     for index in range(1, len(tokens)):
         for phrase in CONNECTOR_PHRASES:
-            if tuple(normalized[index : index + len(phrase)]) == phrase:
-                return tokens[:index], tokens[index + len(phrase) :]
-    return None
+            if tuple(normalized[index : index + len(phrase)]) != phrase:
+                continue
+            text = " ".join(tokens[index + len(phrase) :]).strip()
+            if text:
+                prefix = " ".join(tokens[:index])
+                template = _fuzzy_match_template(prefix, templates)
+                if template is not None:
+                    confidence = difflib.SequenceMatcher(
+                        None, _normalize(prefix), _normalize(template["name"])
+                    ).ratio()
+                    if best is None or confidence > best[0]:
+                        best = (confidence, template, text)
+            break
+    return best
 
 
 def _split_template_and_text(
@@ -153,23 +174,22 @@ def _split_template_and_text(
 
     1. If the *whole* utterance is exactly a template name, there is no free text — return it as is
        (so a legitimate multi-word template like ``freezer-dated`` is not split into ``freezer``).
-    2. Find the longest leading token-run that is exactly a template name **followed by a connector
-       phrase**; the tokens after that phrase are the spoken text. This is the highest-precision
-       recovery, so it runs before the fuzzy whole-utterance match (step 3) — otherwise a long
-       template name plus a short spoken value ("freezer for leftovers para A1") keeps the
-       whole-string ratio above the cutoff and the dictated text is silently dropped. It is
-       overridden only when the whole utterance is a closer match to a *longer* template name than
-       the matched prefix — i.e. the connector sits inside that name (see step 3), not at a text
-       boundary — which keeps trailing words of a multi-word template name from being read as text.
-    3. Otherwise (or per the override above) if the whole utterance is a *very close* match to a
-       template name (``freezer for leftover`` → ``freezer-for-leftovers``), prefer it — a connector
-       word inside a template name must not be read as a text boundary. The stricter cutoff keeps
-       real "<template> <connector> <text>" commands (whose extra text lowers the whole-string
-       ratio) from wrongly landing here.
-    4. Otherwise split at the first connector phrase and **fuzzy**-match the prefix before it, so an
-       ASR/spelling variant ("pantri para …") still recovers the text (the intent is fuzzy by
-       design). Exact matches from steps 1-3 take precedence over this.
-    5. Fall back to :func:`_fuzzy_match_template` on the whole utterance (no free text recovered).
+    2. Take the longest leading token-run that is exactly a template name **followed by a connector
+       phrase**; the tokens after it are the spoken text. Highest precision, so it runs before the
+       whole-utterance match — otherwise a long name plus short text ("freezer for leftovers para
+       A1") keeps the whole-string ratio above the cutoff and the text is silently dropped. It is
+       overridden by the whole match (step 4) only when that resolves a *longer* template name than
+       the matched prefix — i.e. the connector sits inside that name, not at a text boundary.
+    3. Otherwise take the highest-confidence fuzzy connector split (:func:`_best_connector_split`)
+       when its prefix match is strong (≥ the whole cutoff): this recovers text even when the prefix
+       is an ASR/spelling variant of a multi-word name ("pantri para …", "freezer for leftover para
+       A1"), and beats the whole match, which would otherwise drop the text.
+    4. Otherwise, if the whole utterance is a *very close* match to a template name ("freezer for
+       leftover" → "freezer-for-leftovers"), prefer it — a connector word inside a template name must
+       not be read as a text boundary. The stricter cutoff keeps real "<template> <connector> <text>"
+       commands (whose extra text lowers the whole-string ratio) from wrongly landing here.
+    5. Otherwise fall back to a weaker fuzzy connector split, then to :func:`_fuzzy_match_template`
+       on the whole utterance (no free text recovered).
     """
     by_normalized = {_normalize(t["name"]): t for t in templates}
     if _normalize(spoken) in by_normalized:
@@ -204,16 +224,18 @@ def _split_template_and_text(
             return by_normalized[whole_name], None
         return template, recovered
 
+    # A strong fuzzy connector split beats the whole-utterance match (step 4): an ASR variant of a
+    # multi-word template prefix ("freezer for leftover para A1") must still recover the text.
+    best_fuzzy = _best_connector_split(tokens, templates)
+    if best_fuzzy is not None and best_fuzzy[0] >= WHOLE_TEMPLATE_MATCH_CUTOFF:
+        return best_fuzzy[1], best_fuzzy[2]
+
     if whole_name is not None:
         return by_normalized[whole_name], None
 
-    split = _split_on_connector(tokens)
-    if split is not None:
-        prefix_tokens, text_tokens = split
-        template = _fuzzy_match_template(" ".join(prefix_tokens), templates)
-        recovered = " ".join(text_tokens).strip() or None
-        if template is not None and recovered is not None:
-            return template, recovered
+    # Weaker connector split (prefix is a low-confidence fuzzy/substring match) as a last resort.
+    if best_fuzzy is not None:
+        return best_fuzzy[1], best_fuzzy[2]
 
     return _fuzzy_match_template(spoken, templates), None
 
