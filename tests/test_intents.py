@@ -159,6 +159,27 @@ async def test_missing_required_422_speaks_needs_text_english(hass: HomeAssistan
     assert _speech(response) == "I need the text to put on the pantry label."
 
 
+async def test_missing_required_with_text_supplied_surfaces_field(hass: HomeAssistant) -> None:
+    """Text was given but a second required field is still missing: name it, don't re-ask for text.
+
+    The intent fills only the first required field, so a multi-required-field template can still
+    422; the user should hear which field is missing, not a misleading "I need the text".
+    """
+    execute = AsyncMock(
+        side_effect=_api_error(
+            422,
+            {"msg": "Missing required fields", "missing_required": ["subtitle"]},
+            "Missing required fields: subtitle",
+        )
+    )
+    response, _ = await _handle(
+        hass, {"template": "pantry", "text": "tomato soup"}, execute=execute
+    )
+    speech = _speech(response)
+    assert speech.startswith("No he podido imprimir la etiqueta:")
+    assert "subtitle" in speech
+
+
 async def test_other_print_error_speaks_failed(hass: HomeAssistant) -> None:
     """A non-missing-required failure (e.g. a media mismatch) surfaces verbatim, not needs_text."""
     execute = AsyncMock(

@@ -240,9 +240,11 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
             await async_execute_print(coordinator, request)
         except (HomeAssistantError, ServiceValidationError) as err:
             # labelito is authoritative on required fields — do not veto on cached template metadata
-            # (which can be stale for up to the catalog TTL). Turn its "missing required fields" 422
-            # into an actionable prompt, and surface every other failure verbatim.
-            if _is_missing_required_error(err):
+            # (which can be stale for up to the catalog TTL). Reframe its "missing required fields"
+            # 422 as the needs_text prompt only when the user gave no text at all; if text *was*
+            # supplied but a (second or renamed) field is still missing, surface the server's field
+            # names verbatim rather than misleadingly asking for text again.
+            if not text and _is_missing_required_error(err):
                 return self._error(response, speech["needs_text"].format(template=template["name"]))
             return self._error(response, speech["failed"].format(reason=err))
 
