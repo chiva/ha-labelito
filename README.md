@@ -1,4 +1,20 @@
+<div align="center">
+
+<a href="https://github.com/chiva/labelito"><img src="https://raw.githubusercontent.com/chiva/labelito/main/site/assets/labelito-logo.svg" alt="labelito" width="200"></a>
+
 # labelito for Home Assistant
+
+*Self-hosted label printing for Brother QL printers — now in Home Assistant.*<br>
+lah-beh-LEE-toh · `/la.beˈli.to/` · a Spanish diminutive of "label"
+
+[![Installations](https://img.shields.io/badge/dynamic/json?color=0258b1&logo=home-assistant&logoColor=white&label=installs&query=$.labelito.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)](https://analytics.home-assistant.io/)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-0258b1.svg)](https://hacs.xyz)
+[![Latest release](https://img.shields.io/github/v/release/chiva/ha-labelito)](https://github.com/chiva/ha-labelito/releases)
+[![Validate](https://github.com/chiva/ha-labelito/actions/workflows/validate.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/validate.yml)
+[![Tests](https://github.com/chiva/ha-labelito/actions/workflows/test.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/github/license/chiva/ha-labelito)](LICENSE)
+
+</div>
 
 A Home Assistant custom integration for [labelito](https://github.com/chiva/labelito), the
 self-hosted label printing service for Brother QL printers. Print labels from automations, scripts,
@@ -73,7 +89,8 @@ See the reference docs for the full surface:
   responses, and error behavior.
 - **[docs/entities.md](docs/entities.md)** — every sensor/binary sensor/button, and how the
   "Labels printed" counter is sourced.
-- **[docs/voice-assist.md](docs/voice-assist.md)** — installing the voice sentences for Assist.
+- **[docs/voice-assist.md](docs/voice-assist.md)** — installing the voice sentences for Assist
+  (see also Home Assistant's [custom sentences docs](https://www.home-assistant.io/voice_control/custom_sentences_yaml/#customizing-responses)).
 
 Ready-to-adapt automations live in [`examples/`](examples/).
 
