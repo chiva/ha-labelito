@@ -116,10 +116,11 @@ The connectors *para* / *que diga* can't fix this at the grammar layer: they onl
 with-text sentence, and any artificial trailing anchor added to the no-text sentence would make it
 mandatory (breaking the bare *"imprime una etiqueta de pantry"*). So the recovery lives in the
 handler: `_split_template_and_text` (in `intents.py`) peels the longest leading template name off
-the `template` slot and treats the remainder — minus the leading connector — as the spoken text
-(`TEXT_CONNECTORS`). If a required-field template still ends up with no text, Assist replies with an
-actionable message rather than forwarding a request labelito would reject with
-`Missing required fields`.
+the `template` slot and treats the remainder — minus one leading connector phrase
+(`CONNECTOR_PHRASES`) — as the spoken text. If a required-field template still ends up with no text,
+labelito rejects it with a `missing_required` 422 (labelito stays authoritative, so a stale cached
+catalog can't wrongly veto a print), and the handler turns that into an actionable spoken prompt
+instead of the raw error.
 
 `tests/test_intents.py` locks this down, including a `recognize_best` regression test over the
 shipped YAML so the behavior can be re-validated if the sentence files change.

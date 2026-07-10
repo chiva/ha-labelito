@@ -3,8 +3,8 @@
 The regression these lock down: HA's ``recognize_best`` folds the whole Spanish utterance into the
 greedy trailing ``{template}`` wildcard (see docs/voice-assist.md), so the handler receives
 ``template="pantry para sopa de tomate"`` and no ``text`` slot. The handler must recover the free
-text, map it to the template's first required field, and — when no text can be recovered for a
-required-field template — speak an actionable error instead of forwarding a doomed print.
+text, map it to the template's first required field, and — when labelito rejects a print for a
+missing required field — turn that server 422 into an actionable spoken prompt.
 """
 
 from __future__ import annotations
@@ -14,8 +14,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import intent
 
+from custom_components.labelito.api import LabelitoApiError
 from custom_components.labelito.const import INTENT_PRINT
 from custom_components.labelito.intents import (
     LabelitoPrintIntentHandler,
@@ -23,6 +25,14 @@ from custom_components.labelito.intents import (
 )
 
 from .const import MOCK_TEMPLATES
+
+
+def _api_error(status: int, detail: Any, message: str) -> ServiceValidationError:
+    """A ServiceValidationError chained from a LabelitoApiError, as services.py raises it."""
+    err = ServiceValidationError(message)
+    err.__cause__ = LabelitoApiError(status, detail)
+    return err
+
 
 # A template with no required fields: printing it without text is legal (no needs_text error).
 NO_REQUIRED_TEMPLATE: dict[str, Any] = {
@@ -62,18 +72,17 @@ async def _handle(
     *,
     language: str = "es",
     coordinator: Mock | None = None,
+    execute: AsyncMock | None = None,
 ) -> tuple[intent.IntentResponse, AsyncMock]:
     coordinator = coordinator or _make_coordinator()
+    execute = execute or AsyncMock()
     handler = LabelitoPrintIntentHandler()
     with (
         patch(
             "custom_components.labelito.intents.resolve_coordinator",
             return_value=coordinator,
         ),
-        patch(
-            "custom_components.labelito.intents.async_execute_print",
-            new=AsyncMock(),
-        ) as execute,
+        patch("custom_components.labelito.intents.async_execute_print", new=execute),
     ):
         response = await handler.async_handle(_make_intent(hass, slots, language))
     return response, execute
@@ -124,17 +133,45 @@ async def test_english_slots_unaffected(hass: HomeAssistant) -> None:
 # --- graceful handling when there is no text ------------------------------------------------
 
 
-async def test_no_text_on_required_template_speaks_needs_text(hass: HomeAssistant) -> None:
-    """pantry requires 'title'; with nothing to fill, warn instead of forwarding a 422."""
-    response, execute = await _handle(hass, {"template": "pantry"})
-    execute.assert_not_awaited()
+async def test_missing_required_422_speaks_needs_text(hass: HomeAssistant) -> None:
+    """labelito is authoritative: its missing-required 422 becomes the actionable prompt."""
+    execute = AsyncMock(
+        side_effect=_api_error(
+            422,
+            {"msg": "Missing required fields", "missing_required": ["title"]},
+            "Missing required fields: title",
+        )
+    )
+    response, execute = await _handle(hass, {"template": "pantry"}, execute=execute)
+    execute.assert_awaited_once()
     assert _speech(response) == "Necesito el texto para la etiqueta de pantry."
 
 
-async def test_no_text_on_required_template_english(hass: HomeAssistant) -> None:
-    response, execute = await _handle(hass, {"template": "pantry"}, language="en")
-    execute.assert_not_awaited()
+async def test_missing_required_422_speaks_needs_text_english(hass: HomeAssistant) -> None:
+    execute = AsyncMock(
+        side_effect=_api_error(
+            422,
+            {"msg": "Missing required fields", "missing_required": ["title"]},
+            "Missing required fields: title",
+        )
+    )
+    response, execute = await _handle(hass, {"template": "pantry"}, language="en", execute=execute)
     assert _speech(response) == "I need the text to put on the pantry label."
+
+
+async def test_other_print_error_speaks_failed(hass: HomeAssistant) -> None:
+    """A non-missing-required failure (e.g. a media mismatch) surfaces verbatim, not needs_text."""
+    execute = AsyncMock(
+        side_effect=_api_error(
+            409,
+            {"media_loaded": "62mm continuous", "media_required": "29x90mm die-cut"},
+            "The loaded roll is 62mm continuous but the template needs 29x90mm die-cut",
+        )
+    )
+    response, _ = await _handle(hass, {"template": "pantry", "text": "x"}, execute=execute)
+    speech = _speech(response)
+    assert speech.startswith("No he podido imprimir la etiqueta:")
+    assert "62mm continuous" in speech
 
 
 async def test_no_required_fields_prints_without_text(hass: HomeAssistant) -> None:

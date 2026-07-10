@@ -16,6 +16,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import intent
 
+from .api import LabelitoApiError
 from .const import (
     ATTR_COPIES,
     ATTR_DRY_RUN,
@@ -26,6 +27,10 @@ from .const import (
 )
 from .coordinator import LabelitoCoordinator
 from .services import async_execute_print, resolve_coordinator
+
+# labelito's HTTP status for a request that omits a template's required fields (matches
+# services._raise_for_api_error). The intent handler translates it into the spoken needs_text reply.
+HTTP_UNPROCESSABLE_CONTENT = 422
 
 SLOT_TEMPLATE = "template"
 SLOT_TEXT = "text"
@@ -157,6 +162,21 @@ def _text_field_name(template: dict[str, Any]) -> str | None:
     return None
 
 
+def _is_missing_required_error(err: Exception) -> bool:
+    """True when ``err`` came from labelito rejecting a print for missing required fields.
+
+    ``services._raise_for_api_error`` raises ``ServiceValidationError(...) from LabelitoApiError``
+    for a 422, so the structured ``missing_required`` detail is still reachable via ``__cause__``.
+    """
+    cause = err.__cause__
+    return (
+        isinstance(cause, LabelitoApiError)
+        and cause.status == HTTP_UNPROCESSABLE_CONTENT
+        and isinstance(cause.detail, dict)
+        and bool(cause.detail.get("missing_required"))
+    )
+
+
 class LabelitoPrintIntentHandler(intent.IntentHandler):
     """Handle "print a <template> label for <text>" requests from Assist."""
 
@@ -216,15 +236,14 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
             if field_name is not None:
                 request[ATTR_FIELDS] = {field_name: text}
 
-        # A required-field template with nothing to fill would be rejected by labelito with an
-        # opaque 422; speak an actionable error instead of forwarding a doomed request.
-        required = (template.get(ATTR_FIELDS) or {}).get("required") or []
-        if required and not request[ATTR_FIELDS]:
-            return self._error(response, speech["needs_text"].format(template=template["name"]))
-
         try:
             await async_execute_print(coordinator, request)
         except (HomeAssistantError, ServiceValidationError) as err:
+            # labelito is authoritative on required fields — do not veto on cached template metadata
+            # (which can be stale for up to the catalog TTL). Turn its "missing required fields" 422
+            # into an actionable prompt, and surface every other failure verbatim.
+            if _is_missing_required_error(err):
+                return self._error(response, speech["needs_text"].format(template=template["name"]))
             return self._error(response, speech["failed"].format(reason=err))
 
         key = "printed_text" if text else "printed"
