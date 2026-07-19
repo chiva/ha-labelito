@@ -7,5 +7,5 @@ pytest-cov>=5.0.0
 # `except (A, B):` to the unparenthesized form. Freeze the version so a future ruff that
 # reverses that behaviour can't turn `ruff format --check` red on an unrelated PR. Renovate
 # bumps this deliberately (and we re-verify formatting when it does).
-ruff==0.15.20
+ruff==0.15.22
 mypy>=1.11.0
