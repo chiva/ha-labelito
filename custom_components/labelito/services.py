@@ -179,10 +179,11 @@ def _raise_for_api_error(err: LabelitoApiError, template_names: list[str]) -> No
         available = ", ".join(template_names) or "none"
         raise ServiceValidationError(f"{message}. Available templates: {available}") from err
     if err.status == 403:
-        # labelito returns 403 when template_inline is used but INLINE_TEMPLATES_ENABLED is off
-        # server-side. It's a configuration/user error, not a transient fault, so surface it as a
-        # ServiceValidationError with labelito's own detail rather than a generic HomeAssistantError.
-        raise ServiceValidationError(message) from err
+        # 403 is a server-side authorization/configuration refusal — template_inline used while
+        # INLINE_TEMPLATES_ENABLED is off, or a token lacking permission for this operation — not
+        # invalid caller input. Surface it as a fault carrying labelito's own detail rather than a
+        # ServiceValidationError (which would frame a server/auth misconfiguration as bad input).
+        raise HomeAssistantError(f"labelito refused the request (403): {message}") from err
     if err.status in (409, 422):
         raise ServiceValidationError(message) from err
     if err.status == 503:
@@ -392,14 +393,18 @@ def async_setup_services(hass: HomeAssistant) -> None:
     """Register the labelito.print and labelito.reprint_last services."""
 
     async def _handle_print(call: ServiceCall) -> ServiceResponse:
-        coordinator = resolve_coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
-        _validate_template_source(dict(call.data))
-        _validate_sequence(dict(call.data))
+        # Validate the caller's input before resolving the printer, so a bad request (missing
+        # template source, invalid sequence) surfaces its own error rather than being masked by a
+        # "no/multiple printers configured" error from resolve_coordinator.
+        data = dict(call.data)
+        _validate_template_source(data)
+        _validate_sequence(data)
+        coordinator = resolve_coordinator(hass, data.get(ATTR_CONFIG_ENTRY_ID))
         # An inline body has no catalog entry to validate against; only named templates are
         # checked against the live template list.
-        if ATTR_TEMPLATE in call.data:
-            await async_validate_template(coordinator, call.data[ATTR_TEMPLATE])
-        result = await async_execute_print(coordinator, _build_print_request(dict(call.data)))
+        if ATTR_TEMPLATE in data:
+            await async_validate_template(coordinator, data[ATTR_TEMPLATE])
+        result = await async_execute_print(coordinator, _build_print_request(data))
         if not call.return_response:
             return None
         return {

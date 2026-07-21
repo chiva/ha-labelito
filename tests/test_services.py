@@ -148,6 +148,20 @@ async def test_execute_print_maps_503_to_ha_error(
         )
 
 
+async def test_execute_print_maps_403_to_ha_error_not_validation(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # 403 is a server-side auth/config refusal, not bad caller input: it must be a plain
+    # HomeAssistantError (a fault), not a ServiceValidationError.
+    client.print_label.side_effect = LabelitoApiError(403, "Inline templates are disabled")
+    with pytest.raises(HomeAssistantError) as exc:
+        await async_execute_print(
+            coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+        )
+    assert not isinstance(exc.value, ServiceValidationError)
+    assert "Inline templates are disabled" in str(exc.value)
+
+
 async def test_reprint_without_prior_job_raises(coordinator: LabelitoCoordinator) -> None:
     with pytest.raises(ServiceValidationError, match="Nothing to reprint"):
         await async_reprint_last(coordinator)
