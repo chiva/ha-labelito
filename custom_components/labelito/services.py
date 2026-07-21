@@ -28,6 +28,7 @@ from .api import (
     LabelitoApiError,
     LabelitoAuthError,
     LabelitoConnectionError,
+    LabelitoError,
 )
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
@@ -176,10 +177,17 @@ def _speakable_detail(detail: str | dict[str, Any] | list[Any]) -> str:
     return str(detail)
 
 
-def _raise_for_api_error(err: LabelitoApiError, template_names: list[str]) -> NoReturn:
-    """Map a labelito API error onto the matching Home Assistant exception type."""
+def _raise_for_api_error(err: LabelitoApiError, template_names: list[str] | None) -> NoReturn:
+    """Map a labelito API error onto the matching Home Assistant exception type.
+
+    ``template_names`` is the valid-template list to hint on a *named-template* 404, or None when no
+    such hint applies (an inline 404, or a caller with no template context) — then a 404 surfaces
+    labelito's own detail alone rather than listing unrelated stored names.
+    """
     message = _speakable_detail(err.detail)
     if err.status == 404:
+        if template_names is None:
+            raise ServiceValidationError(message) from err
         available = ", ".join(template_names) or "none"
         raise ServiceValidationError(f"{message}. Available templates: {available}") from err
     if err.status == 403:
@@ -261,14 +269,16 @@ async def async_execute_print(
     except LabelitoConnectionError as err:
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:
-        # Only a 404 needs the template catalog (to name the valid templates); fetch it lazily so a
-        # normal print — and every inline print, which never names a stored template — doesn't pay a
-        # catalog round trip on the hot path.
-        names = (
-            coordinator.template_names(await coordinator.async_get_templates())
-            if err.status == 404
-            else []
-        )
+        # Only a *named-template* 404 benefits from listing the valid templates; an inline 404 is
+        # about the submitted body, not a stored name, so it surfaces labelito's own detail alone.
+        # The catalog is fetched lazily (off the hot path) and defensively — a fetch failure here
+        # must not mask the original 404 with a raw, unmapped LabelitoError.
+        names: list[str] | None = None
+        if err.status == 404 and ATTR_TEMPLATE in request:
+            try:
+                names = coordinator.template_names(await coordinator.async_get_templates())
+            except LabelitoError:
+                names = None
         _raise_for_api_error(err, names)
     coordinator.last_job_id = result[ATTR_JOB_ID]
     # A sequence batch prints sequence.count labels but labelito echoes copies=1, so the batch size
@@ -304,7 +314,9 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
             raise ServiceValidationError(
                 f"{_speakable_detail(err.detail)}. Print a new label first."
             ) from err
-        _raise_for_api_error(err, [])
+        # Reprint has no named-template context, so no "available templates" hint (None); a 404 is
+        # already handled above, so this only maps 409/422/503/other.
+        _raise_for_api_error(err, None)
     # A replayed sequence batch reprints all its labels, and PrintResponse carries no item count, so
     # credit the count recorded when the original job printed (last_job_labels, set in lockstep with
     # last_job_id) rather than the echoed copies=1.
@@ -324,7 +336,8 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
         ATTR_COPIES: data[ATTR_COPIES],
         ATTR_DRY_RUN: data[ATTR_DRY_RUN],
     }
-    # Exactly one template source is present (schema Exclusive + _validate_template_source).
+    # Exactly one template source is present (SERVICE_PRINT_SCHEMA: vol.Exclusive rejects both,
+    # cv.has_at_least_one_key rejects neither).
     if ATTR_TEMPLATE in data:
         request[ATTR_TEMPLATE] = data[ATTR_TEMPLATE]
     else:

@@ -10,7 +10,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.labelito.api import LabelitoApiError, LabelitoClient
+from custom_components.labelito.api import (
+    LabelitoApiError,
+    LabelitoClient,
+    LabelitoConnectionError,
+)
 from custom_components.labelito.coordinator import LabelitoCoordinator
 from custom_components.labelito.services import (
     SERVICE_PRINT_SCHEMA,
@@ -161,6 +165,35 @@ async def test_execute_print_404_names_templates_and_is_lazy(
             coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
         )
     assert client.templates.await_count == 1  # catalog fetched only to build the 404 hint
+
+
+async def test_execute_print_inline_404_omits_template_hint(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # An inline print never names a stored template, so a 404 must surface labelito's own detail
+    # without an (irrelevant) "Available templates: ..." list, and must not fetch the catalog.
+    client.print_label.side_effect = LabelitoApiError(404, "Unknown asset in inline body")
+    with pytest.raises(ServiceValidationError) as exc:
+        await async_execute_print(
+            coordinator,
+            {"template_inline": "label: 62\n", "fields": {}, "copies": 1, "dry_run": False},
+        )
+    assert "Available templates" not in str(exc.value)
+    assert "Unknown asset in inline body" in str(exc.value)
+    assert client.templates.await_count == 0
+
+
+async def test_execute_print_named_404_survives_catalog_fetch_failure(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # If the lazy catalog fetch itself fails while building the 404 hint, the original 404 must
+    # still surface as a ServiceValidationError, not a raw LabelitoError.
+    client.print_label.side_effect = LabelitoApiError(404, "Template not found")
+    client.templates.side_effect = LabelitoConnectionError("boom")
+    with pytest.raises(ServiceValidationError, match="Template not found"):
+        await async_execute_print(
+            coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+        )
 
 
 async def test_execute_print_403_does_not_fetch_catalog(
