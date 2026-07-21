@@ -152,13 +152,16 @@ def resolve_coordinator(hass: HomeAssistant, entry_id: str | None) -> LabelitoCo
     return loaded[0].runtime_data
 
 
-def _speakable_detail(detail: str | dict[str, Any] | list[Any]) -> str:
+def _speakable_detail(detail: str | dict[str, Any] | list[Any] | None) -> str:
     """Flatten a labelito error ``detail`` into one speakable sentence.
 
     Mirrors labelito's real 409/422/503 shapes: a media mismatch carries
     ``media_loaded``/``media_required``, a fault carries ``errors``, a missing-fields 422 carries
     ``missing_required``, and simple errors are plain strings.
     """
+    if detail is None:
+        # An error body with no detail (or a literal null) must not surface as the word "None".
+        return "labelito rejected the request"
     if isinstance(detail, str):
         return detail
     if isinstance(detail, dict):
@@ -276,7 +279,12 @@ async def async_execute_print(
         names: list[str] | None = None
         if err.status == 404 and ATTR_TEMPLATE in request:
             try:
-                names = coordinator.template_names(await coordinator.async_get_templates())
+                # force_refresh: a named-template 404 almost always means the template was deleted
+                # between validation and this print, so the hint must reflect the live catalog, not
+                # a cache that still lists the vanished name.
+                names = coordinator.template_names(
+                    await coordinator.async_get_templates(force_refresh=True)
+                )
             except LabelitoError:
                 names = None
         _raise_for_api_error(err, names)
@@ -307,9 +315,9 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:
         if err.status == 404:
-            # The job fell out of labelito's retained history; drop the stale reference and
-            # skip _raise_for_api_error — its 404 branch appends an "available templates" hint
-            # that makes no sense for a job-id miss.
+            # The job fell out of labelito's retained history: drop the stale reference and raise a
+            # job-specific message ("print a new label first") rather than delegating to
+            # _raise_for_api_error, whose generic 404 text is about template names, not a job-id miss.
             coordinator.last_job_id = None
             raise ServiceValidationError(
                 f"{_speakable_detail(err.detail)}. Print a new label first."

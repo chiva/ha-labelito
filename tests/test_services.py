@@ -458,3 +458,8 @@ def test_speakable_detail_media_mismatch() -> None:
     assert _speakable_detail(detail) == (
         "The loaded roll is 62mm continuous but the template needs 29x90mm die-cut"
     )
+
+
+def test_speakable_detail_none_is_not_literal_none() -> None:
+    # An error body with no detail must not surface as the string "None".
+    assert _speakable_detail(None) == "labelito rejected the request"
