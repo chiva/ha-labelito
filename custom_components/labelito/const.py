@@ -57,6 +57,10 @@ SERVICE_REPRINT_LAST: Final = "reprint_last"
 INTENT_PRINT: Final = "LabelitoPrint"
 
 ATTR_TEMPLATE: Final = "template"
+# Alternative to ``template``: a full inline template YAML body. Exactly one of the two must be
+# provided (labelito's PrintRequest enforces this too). Requires INLINE_TEMPLATES_ENABLED=true on
+# the server, else labelito returns 403.
+ATTR_TEMPLATE_INLINE: Final = "template_inline"
 ATTR_FIELDS: Final = "fields"
 ATTR_COPIES: Final = "copies"
 ATTR_DRY_RUN: Final = "dry_run"
@@ -64,8 +68,20 @@ ATTR_LANGUAGE: Final = "language"
 ATTR_CUT: Final = "cut"
 ATTR_RED: Final = "red"
 ATTR_DITHER: Final = "dither"
+ATTR_HIGH_RES: Final = "high_res"
+ATTR_THRESHOLD: Final = "threshold"
 ATTR_IDEMPOTENCY_KEY: Final = "idempotency_key"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
+
+# threshold is a B/W cutoff percentage. labelito's model is Field(gt=0, le=100) on a float; the
+# service narrows it to an integer 1-100 so the number selector, schema, and field docs all state
+# the same bound. The server accepts an int for its float field, and sub-1 / fractional cutoffs
+# have no practical use, so nothing is lost by the narrower client-side contract.
+MIN_THRESHOLD: Final = 1
+MAX_THRESHOLD: Final = 100
+
+# PrintRequest.template_inline length cap (labelito's MAX_TEMPLATE_YAML_CHARS).
+MAX_TEMPLATE_INLINE_CHARS: Final = 65536
 
 ATTR_JOB_ID: Final = "job_id"
 ATTR_STATUS: Final = "status"

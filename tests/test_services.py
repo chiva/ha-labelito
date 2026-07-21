@@ -5,13 +5,19 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.labelito.api import LabelitoApiError, LabelitoClient
+from custom_components.labelito.api import (
+    LabelitoApiError,
+    LabelitoClient,
+    LabelitoConnectionError,
+)
 from custom_components.labelito.coordinator import LabelitoCoordinator
 from custom_components.labelito.services import (
+    SERVICE_PRINT_SCHEMA,
     _build_print_request,
     _speakable_detail,
     _validate_sequence,
@@ -145,6 +151,77 @@ async def test_execute_print_maps_503_to_ha_error(
         )
 
 
+async def test_execute_print_404_names_templates_and_is_lazy(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # A successful print must not fetch the catalog; a 404 fetches it lazily to name valid templates.
+    await async_execute_print(
+        coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+    )
+    assert client.templates.await_count == 0  # hot path did not touch the catalog
+    client.print_label.side_effect = LabelitoApiError(404, "Template not found")
+    with pytest.raises(ServiceValidationError, match="Available templates"):
+        await async_execute_print(
+            coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+        )
+    assert client.templates.await_count == 1  # catalog fetched only to build the 404 hint
+
+
+async def test_execute_print_inline_404_omits_template_hint(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # An inline print never names a stored template, so a 404 must surface labelito's own detail
+    # without an (irrelevant) "Available templates: ..." list, and must not fetch the catalog.
+    client.print_label.side_effect = LabelitoApiError(404, "Unknown asset in inline body")
+    with pytest.raises(ServiceValidationError) as exc:
+        await async_execute_print(
+            coordinator,
+            {"template_inline": "label: 62\n", "fields": {}, "copies": 1, "dry_run": False},
+        )
+    assert "Available templates" not in str(exc.value)
+    assert "Unknown asset in inline body" in str(exc.value)
+    assert client.templates.await_count == 0
+
+
+async def test_execute_print_named_404_survives_catalog_fetch_failure(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # If the lazy catalog fetch itself fails while building the 404 hint, the original 404 must
+    # still surface as a ServiceValidationError, not a raw LabelitoError.
+    client.print_label.side_effect = LabelitoApiError(404, "Template not found")
+    client.templates.side_effect = LabelitoConnectionError("boom")
+    with pytest.raises(ServiceValidationError, match="Template not found"):
+        await async_execute_print(
+            coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+        )
+
+
+async def test_execute_print_403_does_not_fetch_catalog(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    client.print_label.side_effect = LabelitoApiError(403, "Inline templates are disabled")
+    with pytest.raises(HomeAssistantError):
+        await async_execute_print(
+            coordinator,
+            {"template_inline": "label: 62\n", "fields": {}, "copies": 1, "dry_run": False},
+        )
+    assert client.templates.await_count == 0  # non-404 error never fetches the catalog
+
+
+async def test_execute_print_maps_403_to_ha_error_not_validation(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # 403 is a server-side auth/config refusal, not bad caller input: it must be a plain
+    # HomeAssistantError (a fault), not a ServiceValidationError.
+    client.print_label.side_effect = LabelitoApiError(403, "Inline templates are disabled")
+    with pytest.raises(HomeAssistantError) as exc:
+        await async_execute_print(
+            coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+        )
+    assert not isinstance(exc.value, ServiceValidationError)
+    assert "Inline templates are disabled" in str(exc.value)
+
+
 async def test_reprint_without_prior_job_raises(coordinator: LabelitoCoordinator) -> None:
     with pytest.raises(ServiceValidationError, match="Nothing to reprint"):
         await async_reprint_last(coordinator)
@@ -220,6 +297,77 @@ def test_build_print_request_includes_provided_options() -> None:
     assert request["language"] == "es"
     assert request["cut"] is True
     assert request["options"] == {"red": True}
+
+
+def test_build_print_request_includes_render_options() -> None:
+    request = _build_print_request(
+        {
+            "template": "pantry",
+            "fields": {},
+            "copies": 1,
+            "dry_run": False,
+            "red": True,
+            "dither": False,
+            "high_res": True,
+            "threshold": 40,
+        }
+    )
+    assert request["options"] == {
+        "red": True,
+        "dither": False,
+        "high_res": True,
+        "threshold": 40,
+    }
+
+
+def test_build_print_request_inline_template() -> None:
+    # An inline body is sent as template_inline, and the named template key is absent.
+    request = _build_print_request(
+        {
+            "template_inline": "label: 62\nrender: [{text: hi}]\n",
+            "fields": {},
+            "copies": 1,
+            "dry_run": False,
+        }
+    )
+    assert request["template_inline"] == "label: 62\nrender: [{text: hi}]\n"
+    assert "template" not in request
+
+
+def test_print_schema_accepts_either_template_source() -> None:
+    # Either source alone validates.
+    assert SERVICE_PRINT_SCHEMA({"template": "pantry"})["template"] == "pantry"
+    assert SERVICE_PRINT_SCHEMA({"template_inline": "label: 62\n"})["template_inline"]
+
+
+def test_print_schema_requires_a_template_source() -> None:
+    # Neither source → rejected up front by has_at_least_one_key (not left to the handler).
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"fields": {}, "copies": 1})
+
+
+def test_print_schema_rejects_empty_template() -> None:
+    # An empty string must not slip past as a present template and reach the catalog as "''".
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"template": ""})
+
+
+def test_print_schema_rejects_both_template_sources() -> None:
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"template": "pantry", "template_inline": "label: 62\n", "fields": {}})
+
+
+def test_print_schema_rejects_out_of_range_threshold() -> None:
+    # 0 (below the exclusive server floor) and 101 (above 100) are both rejected.
+    for bad in (0, 101):
+        with pytest.raises(vol.MultipleInvalid):
+            SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": bad})
+
+
+def test_print_schema_coerces_threshold_to_int() -> None:
+    # threshold is an integer 1-100 client-side; a float/string coerces to int.
+    assert SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": "40"})["threshold"] == 40
+    assert SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": 100})["threshold"] == 100
 
 
 def test_build_print_request_passes_through_idempotency_key() -> None:
@@ -310,3 +458,8 @@ def test_speakable_detail_media_mismatch() -> None:
     assert _speakable_detail(detail) == (
         "The loaded roll is 62mm continuous but the template needs 29x90mm die-cut"
     )
+
+
+def test_speakable_detail_none_is_not_literal_none() -> None:
+    # An error body with no detail must not surface as the string "None".
+    assert _speakable_detail(None) == "labelito rejected the request"

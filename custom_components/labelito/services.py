@@ -28,6 +28,7 @@ from .api import (
     LabelitoApiError,
     LabelitoAuthError,
     LabelitoConnectionError,
+    LabelitoError,
 )
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
@@ -36,6 +37,7 @@ from .const import (
     ATTR_DITHER,
     ATTR_DRY_RUN,
     ATTR_FIELDS,
+    ATTR_HIGH_RES,
     ATTR_IDEMPOTENCY_KEY,
     ATTR_JOB_ID,
     ATTR_LANGUAGE,
@@ -47,6 +49,8 @@ from .const import (
     ATTR_SEQUENCE,
     ATTR_STATUS,
     ATTR_TEMPLATE,
+    ATTR_TEMPLATE_INLINE,
+    ATTR_THRESHOLD,
     DOMAIN,
     JOB_STATUS_DRY_RUN,
     JOB_STATUS_PRINTED,
@@ -55,11 +59,14 @@ from .const import (
     MAX_SEQ_PADDING,
     MAX_SEQ_START,
     MAX_SEQ_STEP,
+    MAX_TEMPLATE_INLINE_CHARS,
+    MAX_THRESHOLD,
     MIN_COPIES,
     MIN_SEQ_COUNT,
     MIN_SEQ_PADDING,
     MIN_SEQ_START,
     MIN_SEQ_STEP,
+    MIN_THRESHOLD,
     SEQ_KEY_COUNT,
     SEQ_KEY_PADDING,
     SEQ_KEY_START,
@@ -72,35 +79,49 @@ if TYPE_CHECKING:
     from .coordinator import LabelitoCoordinator
 
 SERVICE_PRINT_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_TEMPLATE): cv.string,
-        vol.Optional(ATTR_FIELDS, default=dict): vol.Schema({cv.string: object}),
-        vol.Optional(ATTR_COPIES, default=MIN_COPIES): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_COPIES, max=MAX_COPIES)
-        ),
-        vol.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
-        vol.Optional(ATTR_LANGUAGE): cv.string,
-        vol.Optional(ATTR_CUT): cv.boolean,
-        vol.Optional(ATTR_RED): cv.boolean,
-        vol.Optional(ATTR_DITHER): cv.boolean,
-        vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
-        # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
-        # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
-        # a sequence batch (see _build_print_request); the others only shape the number.
-        vol.Optional(ATTR_SEQ_COUNT): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
-        ),
-        vol.Optional(ATTR_SEQ_START): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
-        ),
-        vol.Optional(ATTR_SEQ_STEP): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
-        ),
-        vol.Optional(ATTR_SEQ_PADDING): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
-        ),
-        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
-    }
+    vol.All(
+        {
+            # Exactly one template source: Exclusive rejects supplying both, and the
+            # has_at_least_one_key wrapper below rejects supplying neither. Both are length-checked
+            # (min 1) so an empty string is rejected here rather than reaching the catalog lookup as
+            # a confusing "Unknown template ''".
+            vol.Exclusive(ATTR_TEMPLATE, "template_source"): vol.All(cv.string, vol.Length(min=1)),
+            vol.Exclusive(ATTR_TEMPLATE_INLINE, "template_source"): vol.All(
+                cv.string, vol.Length(min=1, max=MAX_TEMPLATE_INLINE_CHARS)
+            ),
+            vol.Optional(ATTR_FIELDS, default=dict): vol.Schema({cv.string: object}),
+            vol.Optional(ATTR_COPIES, default=MIN_COPIES): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_COPIES, max=MAX_COPIES)
+            ),
+            vol.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
+            vol.Optional(ATTR_LANGUAGE): cv.string,
+            vol.Optional(ATTR_CUT): cv.boolean,
+            vol.Optional(ATTR_RED): cv.boolean,
+            vol.Optional(ATTR_DITHER): cv.boolean,
+            vol.Optional(ATTR_HIGH_RES): cv.boolean,
+            vol.Optional(ATTR_THRESHOLD): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD)
+            ),
+            vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
+            # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
+            # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
+            # a sequence batch (see _build_print_request); the others only shape the number.
+            vol.Optional(ATTR_SEQ_COUNT): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
+            ),
+            vol.Optional(ATTR_SEQ_START): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
+            ),
+            vol.Optional(ATTR_SEQ_STEP): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
+            ),
+            vol.Optional(ATTR_SEQ_PADDING): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
+            ),
+            vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        },
+        cv.has_at_least_one_key(ATTR_TEMPLATE, ATTR_TEMPLATE_INLINE),
+    )
 )
 
 SERVICE_REPRINT_LAST_SCHEMA = vol.Schema(
@@ -131,13 +152,16 @@ def resolve_coordinator(hass: HomeAssistant, entry_id: str | None) -> LabelitoCo
     return loaded[0].runtime_data
 
 
-def _speakable_detail(detail: str | dict[str, Any] | list[Any]) -> str:
+def _speakable_detail(detail: str | dict[str, Any] | list[Any] | None) -> str:
     """Flatten a labelito error ``detail`` into one speakable sentence.
 
     Mirrors labelito's real 409/422/503 shapes: a media mismatch carries
     ``media_loaded``/``media_required``, a fault carries ``errors``, a missing-fields 422 carries
     ``missing_required``, and simple errors are plain strings.
     """
+    if detail is None:
+        # An error body with no detail (or a literal null) must not surface as the word "None".
+        return "labelito rejected the request"
     if isinstance(detail, str):
         return detail
     if isinstance(detail, dict):
@@ -156,12 +180,25 @@ def _speakable_detail(detail: str | dict[str, Any] | list[Any]) -> str:
     return str(detail)
 
 
-def _raise_for_api_error(err: LabelitoApiError, template_names: list[str]) -> NoReturn:
-    """Map a labelito API error onto the matching Home Assistant exception type."""
+def _raise_for_api_error(err: LabelitoApiError, template_names: list[str] | None) -> NoReturn:
+    """Map a labelito API error onto the matching Home Assistant exception type.
+
+    ``template_names`` is the valid-template list to hint on a *named-template* 404, or None when no
+    such hint applies (an inline 404, or a caller with no template context) — then a 404 surfaces
+    labelito's own detail alone rather than listing unrelated stored names.
+    """
     message = _speakable_detail(err.detail)
     if err.status == 404:
+        if template_names is None:
+            raise ServiceValidationError(message) from err
         available = ", ".join(template_names) or "none"
         raise ServiceValidationError(f"{message}. Available templates: {available}") from err
+    if err.status == 403:
+        # 403 is a server-side authorization/configuration refusal — template_inline used while
+        # INLINE_TEMPLATES_ENABLED is off, or a token lacking permission for this operation — not
+        # invalid caller input. Surface it as a fault carrying labelito's own detail rather than a
+        # ServiceValidationError (which would frame a server/auth misconfiguration as bad input).
+        raise HomeAssistantError(f"labelito refused the request (403): {message}") from err
     if err.status in (409, 422):
         raise ServiceValidationError(message) from err
     if err.status == 503:
@@ -228,7 +265,6 @@ async def async_execute_print(
     print twice as intended, but an automation that wants retry-safety must pass a stable key.
     """
     request.setdefault("idempotency_key", str(uuid.uuid4()))
-    templates = await coordinator.async_get_templates()
     try:
         result = await coordinator.client.print_label(request)
     except LabelitoAuthError as err:
@@ -236,7 +272,22 @@ async def async_execute_print(
     except LabelitoConnectionError as err:
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:
-        _raise_for_api_error(err, coordinator.template_names(templates))
+        # Only a *named-template* 404 benefits from listing the valid templates; an inline 404 is
+        # about the submitted body, not a stored name, so it surfaces labelito's own detail alone.
+        # The catalog is fetched lazily (off the hot path) and defensively — a fetch failure here
+        # must not mask the original 404 with a raw, unmapped LabelitoError.
+        names: list[str] | None = None
+        if err.status == 404 and ATTR_TEMPLATE in request:
+            try:
+                # force_refresh: a named-template 404 almost always means the template was deleted
+                # between validation and this print, so the hint must reflect the live catalog, not
+                # a cache that still lists the vanished name.
+                names = coordinator.template_names(
+                    await coordinator.async_get_templates(force_refresh=True)
+                )
+            except LabelitoError:
+                names = None
+        _raise_for_api_error(err, names)
     coordinator.last_job_id = result[ATTR_JOB_ID]
     # A sequence batch prints sequence.count labels but labelito echoes copies=1, so the batch size
     # is read from the request we just sent, not the response. Remember it for reprint-last.
@@ -264,14 +315,16 @@ async def async_reprint_last(coordinator: LabelitoCoordinator) -> dict[str, Any]
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:
         if err.status == 404:
-            # The job fell out of labelito's retained history; drop the stale reference and
-            # skip _raise_for_api_error — its 404 branch appends an "available templates" hint
-            # that makes no sense for a job-id miss.
+            # The job fell out of labelito's retained history: drop the stale reference and raise a
+            # job-specific message ("print a new label first") rather than delegating to
+            # _raise_for_api_error, whose generic 404 text is about template names, not a job-id miss.
             coordinator.last_job_id = None
             raise ServiceValidationError(
                 f"{_speakable_detail(err.detail)}. Print a new label first."
             ) from err
-        _raise_for_api_error(err, [])
+        # Reprint has no named-template context, so no "available templates" hint (None); a 404 is
+        # already handled above, so this only maps 409/422/503/other.
+        _raise_for_api_error(err, None)
     # A replayed sequence batch reprints all its labels, and PrintResponse carries no item count, so
     # credit the count recorded when the original job printed (last_job_labels, set in lockstep with
     # last_job_id) rather than the echoed copies=1.
@@ -287,18 +340,27 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
     a hardcoded value would override server configuration.
     """
     request: dict[str, Any] = {
-        ATTR_TEMPLATE: data[ATTR_TEMPLATE],
         ATTR_FIELDS: data[ATTR_FIELDS],
         ATTR_COPIES: data[ATTR_COPIES],
         ATTR_DRY_RUN: data[ATTR_DRY_RUN],
     }
+    # Exactly one template source is present (SERVICE_PRINT_SCHEMA: vol.Exclusive rejects both,
+    # cv.has_at_least_one_key rejects neither).
+    if ATTR_TEMPLATE in data:
+        request[ATTR_TEMPLATE] = data[ATTR_TEMPLATE]
+    else:
+        request[ATTR_TEMPLATE_INLINE] = data[ATTR_TEMPLATE_INLINE]
     if ATTR_LANGUAGE in data:
         request[ATTR_LANGUAGE] = data[ATTR_LANGUAGE]
     if ATTR_CUT in data:
         request[ATTR_CUT] = data[ATTR_CUT]
     if ATTR_IDEMPOTENCY_KEY in data:
         request[ATTR_IDEMPOTENCY_KEY] = data[ATTR_IDEMPOTENCY_KEY]
-    options = {key: data[key] for key in (ATTR_RED, ATTR_DITHER) if key in data}
+    options = {
+        key: data[key]
+        for key in (ATTR_RED, ATTR_DITHER, ATTR_HIGH_RES, ATTR_THRESHOLD)
+        if key in data
+    }
     if options:
         request["options"] = options
     # seq_count marks the request as an auto-numbering batch; the other seq_* inputs only shape the
@@ -349,10 +411,18 @@ def async_setup_services(hass: HomeAssistant) -> None:
     """Register the labelito.print and labelito.reprint_last services."""
 
     async def _handle_print(call: ServiceCall) -> ServiceResponse:
-        coordinator = resolve_coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
-        _validate_sequence(dict(call.data))
-        await async_validate_template(coordinator, call.data[ATTR_TEMPLATE])
-        result = await async_execute_print(coordinator, _build_print_request(dict(call.data)))
+        # Exactly-one-template-source and field bounds are enforced by SERVICE_PRINT_SCHEMA before
+        # the handler runs. The remaining cross-field sequence rules are checked before resolving
+        # the printer, so a bad sequence surfaces its own error rather than being masked by a
+        # "no/multiple printers configured" error from resolve_coordinator.
+        data = dict(call.data)
+        _validate_sequence(data)
+        coordinator = resolve_coordinator(hass, data.get(ATTR_CONFIG_ENTRY_ID))
+        # An inline body has no catalog entry to validate against; only named templates are
+        # checked against the live template list.
+        if ATTR_TEMPLATE in data:
+            await async_validate_template(coordinator, data[ATTR_TEMPLATE])
+        result = await async_execute_print(coordinator, _build_print_request(data))
         if not call.return_response:
             return None
         return {
