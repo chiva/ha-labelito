@@ -146,7 +146,7 @@
         },
         "threshold": {
           "name": "Umbral",
-          "description": "Umbral de corte blanco/negro en porcentaje (1-100); valores más bajos imprimen más negro. Se ignora si el Tramado está activo. Por defecto 70 en el servidor."
+          "description": "Umbral de corte blanco/negro en porcentaje (1-100): los píxeles por debajo del umbral se imprimen en negro, por lo que valores más altos imprimen más negro. Se ignora si el Tramado está activo. Por defecto 70 en el servidor."
         },
         "idempotency_key": {
           "name": "Clave de idempotencia",

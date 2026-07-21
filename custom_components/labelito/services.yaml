@@ -89,8 +89,8 @@ print:
     threshold:
       name: Threshold
       description: >-
-        Black/white cutoff as a percentage (1-100): pixels darker than this become black, lighter
-        become white. Lower values print more black. Ignored when Dither is on. Leave unset to
+        Black/white cutoff as a percentage (1-100): pixels below the cutoff become black, above it
+        become white, so higher values print more black. Ignored when Dither is on. Leave unset to
         inherit the server default (70).
       example: 70
       selector:
