@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/chiva/ha-labelito/compare/v1.0.1...v1.1.0) (2026-07-21)
+
+
+### Features
+
+* add high_res, threshold, and inline template print options ([#27](https://github.com/chiva/ha-labelito/issues/27)) ([26f59be](https://github.com/chiva/ha-labelito/commit/26f59bed925518699f6310d76caf3a5f937e5c44))
+
 ## [1.0.1](https://github.com/chiva/ha-labelito/compare/v1.0.0...v1.0.1) (2026-07-10)
 
 
