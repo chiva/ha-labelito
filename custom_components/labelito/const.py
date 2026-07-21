@@ -73,9 +73,11 @@ ATTR_THRESHOLD: Final = "threshold"
 ATTR_IDEMPOTENCY_KEY: Final = "idempotency_key"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 
-# RenderOptions.threshold bounds (Field(gt=0, le=100) in labelito's models) — a B/W cutoff
-# percentage. The lower bound is exclusive.
-MIN_THRESHOLD: Final = 0
+# threshold is a B/W cutoff percentage. labelito's model is Field(gt=0, le=100) on a float; the
+# service narrows it to an integer 1-100 so the number selector, schema, and field docs all state
+# the same bound. The server accepts an int for its float field, and sub-1 / fractional cutoffs
+# have no practical use, so nothing is lost by the narrower client-side contract.
+MIN_THRESHOLD: Final = 1
 MAX_THRESHOLD: Final = 100
 
 # PrintRequest.template_inline length cap (labelito's MAX_TEMPLATE_YAML_CHARS).

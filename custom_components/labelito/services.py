@@ -96,8 +96,7 @@ SERVICE_PRINT_SCHEMA = vol.Schema(
         vol.Optional(ATTR_DITHER): cv.boolean,
         vol.Optional(ATTR_HIGH_RES): cv.boolean,
         vol.Optional(ATTR_THRESHOLD): vol.All(
-            vol.Coerce(float),
-            vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD, min_included=False),
+            vol.Coerce(int), vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD)
         ),
         vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
         # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request

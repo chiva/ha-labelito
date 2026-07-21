@@ -249,14 +249,14 @@ def test_build_print_request_includes_render_options() -> None:
             "red": True,
             "dither": False,
             "high_res": True,
-            "threshold": 40.0,
+            "threshold": 40,
         }
     )
     assert request["options"] == {
         "red": True,
         "dither": False,
         "high_res": True,
-        "threshold": 40.0,
+        "threshold": 40,
     }
 
 
@@ -291,8 +291,16 @@ def test_print_schema_rejects_both_template_sources() -> None:
 
 
 def test_print_schema_rejects_out_of_range_threshold() -> None:
-    with pytest.raises(vol.MultipleInvalid):
-        SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": 0})
+    # 0 (below the exclusive server floor) and 101 (above 100) are both rejected.
+    for bad in (0, 101):
+        with pytest.raises(vol.MultipleInvalid):
+            SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": bad})
+
+
+def test_print_schema_coerces_threshold_to_int() -> None:
+    # threshold is an integer 1-100 client-side; a float/string coerces to int.
+    assert SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": "40"})["threshold"] == 40
+    assert SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": 100})["threshold"] == 100
 
 
 def test_build_print_request_passes_through_idempotency_key() -> None:

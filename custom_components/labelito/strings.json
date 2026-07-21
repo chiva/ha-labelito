@@ -146,7 +146,7 @@
         },
         "threshold": {
           "name": "Threshold",
-          "description": "Black/white cutoff percentage (0-100); lower prints more black. Ignored when Dither is on. Defaults to 70 on the server."
+          "description": "Black/white cutoff percentage (1-100); lower prints more black. Ignored when Dither is on. Defaults to 70 on the server."
         },
         "idempotency_key": {
           "name": "Idempotency key",
