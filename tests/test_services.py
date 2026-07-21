@@ -17,7 +17,6 @@ from custom_components.labelito.services import (
     _build_print_request,
     _speakable_detail,
     _validate_sequence,
-    _validate_template_source,
     async_execute_print,
     async_reprint_last,
     async_validate_template,
@@ -148,6 +147,34 @@ async def test_execute_print_maps_503_to_ha_error(
         )
 
 
+async def test_execute_print_404_names_templates_and_is_lazy(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # A successful print must not fetch the catalog; a 404 fetches it lazily to name valid templates.
+    await async_execute_print(
+        coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+    )
+    assert client.templates.await_count == 0  # hot path did not touch the catalog
+    client.print_label.side_effect = LabelitoApiError(404, "Template not found")
+    with pytest.raises(ServiceValidationError, match="Available templates"):
+        await async_execute_print(
+            coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": False}
+        )
+    assert client.templates.await_count == 1  # catalog fetched only to build the 404 hint
+
+
+async def test_execute_print_403_does_not_fetch_catalog(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    client.print_label.side_effect = LabelitoApiError(403, "Inline templates are disabled")
+    with pytest.raises(HomeAssistantError):
+        await async_execute_print(
+            coordinator,
+            {"template_inline": "label: 62\n", "fields": {}, "copies": 1, "dry_run": False},
+        )
+    assert client.templates.await_count == 0  # non-404 error never fetches the catalog
+
+
 async def test_execute_print_maps_403_to_ha_error_not_validation(
     coordinator: LabelitoCoordinator, client: AsyncMock
 ) -> None:
@@ -274,15 +301,22 @@ def test_build_print_request_inline_template() -> None:
     assert "template" not in request
 
 
-def test_validate_template_source_requires_one() -> None:
-    with pytest.raises(ServiceValidationError, match="template"):
-        _validate_template_source({"fields": {}, "copies": 1, "dry_run": False})
+def test_print_schema_accepts_either_template_source() -> None:
+    # Either source alone validates.
+    assert SERVICE_PRINT_SCHEMA({"template": "pantry"})["template"] == "pantry"
+    assert SERVICE_PRINT_SCHEMA({"template_inline": "label: 62\n"})["template_inline"]
 
 
-def test_validate_template_source_allows_either() -> None:
-    # Either source alone passes without raising.
-    _validate_template_source({"template": "pantry", "fields": {}})
-    _validate_template_source({"template_inline": "label: 62\n", "fields": {}})
+def test_print_schema_requires_a_template_source() -> None:
+    # Neither source → rejected up front by has_at_least_one_key (not left to the handler).
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"fields": {}, "copies": 1})
+
+
+def test_print_schema_rejects_empty_template() -> None:
+    # An empty string must not slip past as a present template and reach the catalog as "''".
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"template": ""})
 
 
 def test_print_schema_rejects_both_template_sources() -> None:

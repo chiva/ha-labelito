@@ -78,44 +78,49 @@ if TYPE_CHECKING:
     from .coordinator import LabelitoCoordinator
 
 SERVICE_PRINT_SCHEMA = vol.Schema(
-    {
-        # Exactly one template source. Exclusive rejects supplying both; _validate_template_source
-        # (run in the handler) rejects supplying neither, since vol alone can't require one-of.
-        vol.Exclusive(ATTR_TEMPLATE, "template_source"): cv.string,
-        vol.Exclusive(ATTR_TEMPLATE_INLINE, "template_source"): vol.All(
-            cv.string, vol.Length(min=1, max=MAX_TEMPLATE_INLINE_CHARS)
-        ),
-        vol.Optional(ATTR_FIELDS, default=dict): vol.Schema({cv.string: object}),
-        vol.Optional(ATTR_COPIES, default=MIN_COPIES): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_COPIES, max=MAX_COPIES)
-        ),
-        vol.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
-        vol.Optional(ATTR_LANGUAGE): cv.string,
-        vol.Optional(ATTR_CUT): cv.boolean,
-        vol.Optional(ATTR_RED): cv.boolean,
-        vol.Optional(ATTR_DITHER): cv.boolean,
-        vol.Optional(ATTR_HIGH_RES): cv.boolean,
-        vol.Optional(ATTR_THRESHOLD): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD)
-        ),
-        vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
-        # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
-        # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
-        # a sequence batch (see _build_print_request); the others only shape the number.
-        vol.Optional(ATTR_SEQ_COUNT): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
-        ),
-        vol.Optional(ATTR_SEQ_START): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
-        ),
-        vol.Optional(ATTR_SEQ_STEP): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
-        ),
-        vol.Optional(ATTR_SEQ_PADDING): vol.All(
-            vol.Coerce(int), vol.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
-        ),
-        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
-    }
+    vol.All(
+        {
+            # Exactly one template source: Exclusive rejects supplying both, and the
+            # has_at_least_one_key wrapper below rejects supplying neither. Both are length-checked
+            # (min 1) so an empty string is rejected here rather than reaching the catalog lookup as
+            # a confusing "Unknown template ''".
+            vol.Exclusive(ATTR_TEMPLATE, "template_source"): vol.All(cv.string, vol.Length(min=1)),
+            vol.Exclusive(ATTR_TEMPLATE_INLINE, "template_source"): vol.All(
+                cv.string, vol.Length(min=1, max=MAX_TEMPLATE_INLINE_CHARS)
+            ),
+            vol.Optional(ATTR_FIELDS, default=dict): vol.Schema({cv.string: object}),
+            vol.Optional(ATTR_COPIES, default=MIN_COPIES): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_COPIES, max=MAX_COPIES)
+            ),
+            vol.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
+            vol.Optional(ATTR_LANGUAGE): cv.string,
+            vol.Optional(ATTR_CUT): cv.boolean,
+            vol.Optional(ATTR_RED): cv.boolean,
+            vol.Optional(ATTR_DITHER): cv.boolean,
+            vol.Optional(ATTR_HIGH_RES): cv.boolean,
+            vol.Optional(ATTR_THRESHOLD): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD)
+            ),
+            vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
+            # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
+            # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
+            # a sequence batch (see _build_print_request); the others only shape the number.
+            vol.Optional(ATTR_SEQ_COUNT): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
+            ),
+            vol.Optional(ATTR_SEQ_START): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
+            ),
+            vol.Optional(ATTR_SEQ_STEP): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
+            ),
+            vol.Optional(ATTR_SEQ_PADDING): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
+            ),
+            vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        },
+        cv.has_at_least_one_key(ATTR_TEMPLATE, ATTR_TEMPLATE_INLINE),
+    )
 )
 
 SERVICE_REPRINT_LAST_SCHEMA = vol.Schema(
@@ -249,7 +254,6 @@ async def async_execute_print(
     print twice as intended, but an automation that wants retry-safety must pass a stable key.
     """
     request.setdefault("idempotency_key", str(uuid.uuid4()))
-    templates = await coordinator.async_get_templates()
     try:
         result = await coordinator.client.print_label(request)
     except LabelitoAuthError as err:
@@ -257,7 +261,15 @@ async def async_execute_print(
     except LabelitoConnectionError as err:
         raise HomeAssistantError(f"Printer unreachable: {err}") from err
     except LabelitoApiError as err:
-        _raise_for_api_error(err, coordinator.template_names(templates))
+        # Only a 404 needs the template catalog (to name the valid templates); fetch it lazily so a
+        # normal print — and every inline print, which never names a stored template — doesn't pay a
+        # catalog round trip on the hot path.
+        names = (
+            coordinator.template_names(await coordinator.async_get_templates())
+            if err.status == 404
+            else []
+        )
+        _raise_for_api_error(err, names)
     coordinator.last_job_id = result[ATTR_JOB_ID]
     # A sequence batch prints sequence.count labels but labelito echoes copies=1, so the batch size
     # is read from the request we just sent, not the response. Remember it for reprint-last.
@@ -345,20 +357,6 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
     return request
 
 
-def _validate_template_source(data: dict[str, Any]) -> None:
-    """Require exactly one template source before the print runs.
-
-    The schema's ``vol.Exclusive`` already rejects supplying *both* ``template`` and
-    ``template_inline``; voluptuous cannot also express "at least one", so the neither-supplied
-    case is caught here (mirroring labelito's own PrintRequest validator) as a fail-fast error.
-    """
-    if ATTR_TEMPLATE not in data and ATTR_TEMPLATE_INLINE not in data:
-        raise ServiceValidationError(
-            "Provide 'template' (a stored template name) or 'template_inline' (an inline "
-            "template YAML body)."
-        )
-
-
 def _validate_sequence(data: dict[str, Any]) -> None:
     """Reject invalid auto-numbering input before it reaches the printer service.
 
@@ -392,11 +390,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
     """Register the labelito.print and labelito.reprint_last services."""
 
     async def _handle_print(call: ServiceCall) -> ServiceResponse:
-        # Validate the caller's input before resolving the printer, so a bad request (missing
-        # template source, invalid sequence) surfaces its own error rather than being masked by a
+        # Exactly-one-template-source and field bounds are enforced by SERVICE_PRINT_SCHEMA before
+        # the handler runs. The remaining cross-field sequence rules are checked before resolving
+        # the printer, so a bad sequence surfaces its own error rather than being masked by a
         # "no/multiple printers configured" error from resolve_coordinator.
         data = dict(call.data)
-        _validate_template_source(data)
         _validate_sequence(data)
         coordinator = resolve_coordinator(hass, data.get(ATTR_CONFIG_ENTRY_ID))
         # An inline body has no catalog entry to validate against; only named templates are
