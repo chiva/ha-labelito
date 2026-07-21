@@ -13,11 +13,19 @@ print:
       description: >-
         Name of the labelito template to print, for example "pantry" or "freezer-dated". Must be
         one of the templates the labelito service currently serves; unknown names fail with the
-        list of valid templates.
-      required: true
+        list of valid templates. Provide either this or "Inline template" (exactly one).
       example: pantry
       selector:
         text:
+    template_inline:
+      name: Inline template
+      description: >-
+        A full template YAML body to print without storing it on the server first. Mutually
+        exclusive with "Template" (provide exactly one). Requires INLINE_TEMPLATES_ENABLED=true on
+        the labelito service, otherwise the print is rejected.
+      selector:
+        text:
+          multiline: true
     fields:
       name: Fields
       description: >-
@@ -70,6 +78,27 @@ print:
         default.
       selector:
         boolean:
+    high_res:
+      name: High resolution
+      description: >-
+        Print in 600 dpi high-resolution mode for sharper small text and dense QR codes, on
+        supported printers. Physical label size is unchanged. Leave unset to inherit the server
+        default.
+      selector:
+        boolean:
+    threshold:
+      name: Threshold
+      description: >-
+        Black/white cutoff as a percentage (0-100): pixels darker than this become black, lighter
+        become white. Lower values print more black. Ignored when Dither is on. Leave unset to
+        inherit the server default (70).
+      example: 70
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: box
     idempotency_key:
       name: Idempotency key
       description: >-

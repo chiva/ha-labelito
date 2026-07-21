@@ -36,6 +36,7 @@ from .const import (
     ATTR_DITHER,
     ATTR_DRY_RUN,
     ATTR_FIELDS,
+    ATTR_HIGH_RES,
     ATTR_IDEMPOTENCY_KEY,
     ATTR_JOB_ID,
     ATTR_LANGUAGE,
@@ -47,6 +48,8 @@ from .const import (
     ATTR_SEQUENCE,
     ATTR_STATUS,
     ATTR_TEMPLATE,
+    ATTR_TEMPLATE_INLINE,
+    ATTR_THRESHOLD,
     DOMAIN,
     JOB_STATUS_DRY_RUN,
     JOB_STATUS_PRINTED,
@@ -55,11 +58,14 @@ from .const import (
     MAX_SEQ_PADDING,
     MAX_SEQ_START,
     MAX_SEQ_STEP,
+    MAX_TEMPLATE_INLINE_CHARS,
+    MAX_THRESHOLD,
     MIN_COPIES,
     MIN_SEQ_COUNT,
     MIN_SEQ_PADDING,
     MIN_SEQ_START,
     MIN_SEQ_STEP,
+    MIN_THRESHOLD,
     SEQ_KEY_COUNT,
     SEQ_KEY_PADDING,
     SEQ_KEY_START,
@@ -73,7 +79,12 @@ if TYPE_CHECKING:
 
 SERVICE_PRINT_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_TEMPLATE): cv.string,
+        # Exactly one template source. Exclusive rejects supplying both; _validate_template_source
+        # (run in the handler) rejects supplying neither, since vol alone can't require one-of.
+        vol.Exclusive(ATTR_TEMPLATE, "template_source"): cv.string,
+        vol.Exclusive(ATTR_TEMPLATE_INLINE, "template_source"): vol.All(
+            cv.string, vol.Length(min=1, max=MAX_TEMPLATE_INLINE_CHARS)
+        ),
         vol.Optional(ATTR_FIELDS, default=dict): vol.Schema({cv.string: object}),
         vol.Optional(ATTR_COPIES, default=MIN_COPIES): vol.All(
             vol.Coerce(int), vol.Range(min=MIN_COPIES, max=MAX_COPIES)
@@ -83,6 +94,11 @@ SERVICE_PRINT_SCHEMA = vol.Schema(
         vol.Optional(ATTR_CUT): cv.boolean,
         vol.Optional(ATTR_RED): cv.boolean,
         vol.Optional(ATTR_DITHER): cv.boolean,
+        vol.Optional(ATTR_HIGH_RES): cv.boolean,
+        vol.Optional(ATTR_THRESHOLD): vol.All(
+            vol.Coerce(float),
+            vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD, min_included=False),
+        ),
         vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
         # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
         # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
@@ -162,6 +178,11 @@ def _raise_for_api_error(err: LabelitoApiError, template_names: list[str]) -> No
     if err.status == 404:
         available = ", ".join(template_names) or "none"
         raise ServiceValidationError(f"{message}. Available templates: {available}") from err
+    if err.status == 403:
+        # labelito returns 403 when template_inline is used but INLINE_TEMPLATES_ENABLED is off
+        # server-side. It's a configuration/user error, not a transient fault, so surface it as a
+        # ServiceValidationError with labelito's own detail rather than a generic HomeAssistantError.
+        raise ServiceValidationError(message) from err
     if err.status in (409, 422):
         raise ServiceValidationError(message) from err
     if err.status == 503:
@@ -287,18 +308,26 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
     a hardcoded value would override server configuration.
     """
     request: dict[str, Any] = {
-        ATTR_TEMPLATE: data[ATTR_TEMPLATE],
         ATTR_FIELDS: data[ATTR_FIELDS],
         ATTR_COPIES: data[ATTR_COPIES],
         ATTR_DRY_RUN: data[ATTR_DRY_RUN],
     }
+    # Exactly one template source is present (schema Exclusive + _validate_template_source).
+    if ATTR_TEMPLATE in data:
+        request[ATTR_TEMPLATE] = data[ATTR_TEMPLATE]
+    else:
+        request[ATTR_TEMPLATE_INLINE] = data[ATTR_TEMPLATE_INLINE]
     if ATTR_LANGUAGE in data:
         request[ATTR_LANGUAGE] = data[ATTR_LANGUAGE]
     if ATTR_CUT in data:
         request[ATTR_CUT] = data[ATTR_CUT]
     if ATTR_IDEMPOTENCY_KEY in data:
         request[ATTR_IDEMPOTENCY_KEY] = data[ATTR_IDEMPOTENCY_KEY]
-    options = {key: data[key] for key in (ATTR_RED, ATTR_DITHER) if key in data}
+    options = {
+        key: data[key]
+        for key in (ATTR_RED, ATTR_DITHER, ATTR_HIGH_RES, ATTR_THRESHOLD)
+        if key in data
+    }
     if options:
         request["options"] = options
     # seq_count marks the request as an auto-numbering batch; the other seq_* inputs only shape the
@@ -314,6 +343,20 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
             sequence[SEQ_KEY_PADDING] = data[ATTR_SEQ_PADDING]
         request[ATTR_SEQUENCE] = sequence
     return request
+
+
+def _validate_template_source(data: dict[str, Any]) -> None:
+    """Require exactly one template source before the print runs.
+
+    The schema's ``vol.Exclusive`` already rejects supplying *both* ``template`` and
+    ``template_inline``; voluptuous cannot also express "at least one", so the neither-supplied
+    case is caught here (mirroring labelito's own PrintRequest validator) as a fail-fast error.
+    """
+    if ATTR_TEMPLATE not in data and ATTR_TEMPLATE_INLINE not in data:
+        raise ServiceValidationError(
+            "Provide 'template' (a stored template name) or 'template_inline' (an inline "
+            "template YAML body)."
+        )
 
 
 def _validate_sequence(data: dict[str, Any]) -> None:
@@ -350,8 +393,12 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
     async def _handle_print(call: ServiceCall) -> ServiceResponse:
         coordinator = resolve_coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        _validate_template_source(dict(call.data))
         _validate_sequence(dict(call.data))
-        await async_validate_template(coordinator, call.data[ATTR_TEMPLATE])
+        # An inline body has no catalog entry to validate against; only named templates are
+        # checked against the live template list.
+        if ATTR_TEMPLATE in call.data:
+            await async_validate_template(coordinator, call.data[ATTR_TEMPLATE])
         result = await async_execute_print(coordinator, _build_print_request(dict(call.data)))
         if not call.return_response:
             return None

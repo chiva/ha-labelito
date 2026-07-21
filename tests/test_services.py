@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -12,9 +13,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.labelito.api import LabelitoApiError, LabelitoClient
 from custom_components.labelito.coordinator import LabelitoCoordinator
 from custom_components.labelito.services import (
+    SERVICE_PRINT_SCHEMA,
     _build_print_request,
     _speakable_detail,
     _validate_sequence,
+    _validate_template_source,
     async_execute_print,
     async_reprint_last,
     async_validate_template,
@@ -220,6 +223,62 @@ def test_build_print_request_includes_provided_options() -> None:
     assert request["language"] == "es"
     assert request["cut"] is True
     assert request["options"] == {"red": True}
+
+
+def test_build_print_request_includes_render_options() -> None:
+    request = _build_print_request(
+        {
+            "template": "pantry",
+            "fields": {},
+            "copies": 1,
+            "dry_run": False,
+            "red": True,
+            "dither": False,
+            "high_res": True,
+            "threshold": 40.0,
+        }
+    )
+    assert request["options"] == {
+        "red": True,
+        "dither": False,
+        "high_res": True,
+        "threshold": 40.0,
+    }
+
+
+def test_build_print_request_inline_template() -> None:
+    # An inline body is sent as template_inline, and the named template key is absent.
+    request = _build_print_request(
+        {
+            "template_inline": "label: 62\nrender: [{text: hi}]\n",
+            "fields": {},
+            "copies": 1,
+            "dry_run": False,
+        }
+    )
+    assert request["template_inline"] == "label: 62\nrender: [{text: hi}]\n"
+    assert "template" not in request
+
+
+def test_validate_template_source_requires_one() -> None:
+    with pytest.raises(ServiceValidationError, match="template"):
+        _validate_template_source({"fields": {}, "copies": 1, "dry_run": False})
+
+
+def test_validate_template_source_allows_either() -> None:
+    # Either source alone passes without raising.
+    _validate_template_source({"template": "pantry", "fields": {}})
+    _validate_template_source({"template_inline": "label: 62\n", "fields": {}})
+
+
+def test_print_schema_rejects_both_template_sources() -> None:
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"template": "pantry", "template_inline": "label: 62\n", "fields": {}})
+
+
+def test_print_schema_rejects_out_of_range_threshold() -> None:
+    with pytest.raises(vol.MultipleInvalid):
+        SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": 0})
 
 
 def test_build_print_request_passes_through_idempotency_key() -> None:

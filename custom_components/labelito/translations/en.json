@@ -106,7 +106,11 @@
       "fields": {
         "template": {
           "name": "Template",
-          "description": "Name of the labelito template to print, for example \"pantry\". Validated against the live template list."
+          "description": "Name of the labelito template to print, for example \"pantry\". Validated against the live template list. Provide this or Inline template (exactly one)."
+        },
+        "template_inline": {
+          "name": "Inline template",
+          "description": "A full template YAML body to print without storing it on the server first. Mutually exclusive with Template. Requires INLINE_TEMPLATES_ENABLED on the labelito service."
         },
         "fields": {
           "name": "Fields",
@@ -135,6 +139,14 @@
         "dither": {
           "name": "Dither",
           "description": "Approximate greys with Floyd-Steinberg dithering."
+        },
+        "high_res": {
+          "name": "High resolution",
+          "description": "Print in 600 dpi mode for sharper small text and dense QR codes, on supported printers. Leave unset to inherit the server default."
+        },
+        "threshold": {
+          "name": "Threshold",
+          "description": "Black/white cutoff percentage (0-100); lower prints more black. Ignored when Dither is on. Defaults to 70 on the server."
         },
         "idempotency_key": {
           "name": "Idempotency key",

@@ -106,7 +106,11 @@
       "fields": {
         "template": {
           "name": "Plantilla",
-          "description": "Nombre de la plantilla de labelito a imprimir, por ejemplo \"pantry\". Se valida contra la lista de plantillas en vivo."
+          "description": "Nombre de la plantilla de labelito a imprimir, por ejemplo \"pantry\". Se valida contra la lista de plantillas en vivo. Indica esta o Plantilla en línea (exactamente una)."
+        },
+        "template_inline": {
+          "name": "Plantilla en línea",
+          "description": "Un cuerpo YAML de plantilla completo para imprimir sin guardarlo antes en el servidor. Excluyente con Plantilla. Requiere INLINE_TEMPLATES_ENABLED en el servicio labelito."
         },
         "fields": {
           "name": "Campos",
@@ -135,6 +139,14 @@
         "dither": {
           "name": "Tramado",
           "description": "Aproxima los grises con tramado Floyd-Steinberg."
+        },
+        "high_res": {
+          "name": "Alta resolución",
+          "description": "Imprime en modo de 600 ppp para textos pequeños y códigos QR densos más nítidos, en impresoras compatibles. Déjalo sin marcar para usar el valor por defecto del servidor."
+        },
+        "threshold": {
+          "name": "Umbral",
+          "description": "Umbral de corte blanco/negro en porcentaje (0-100); valores más bajos imprimen más negro. Se ignora si el Tramado está activo. Por defecto 70 en el servidor."
         },
         "idempotency_key": {
           "name": "Clave de idempotencia",
