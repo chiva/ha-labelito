@@ -1,7 +1,7 @@
 # pytest-homeassistant-custom-component is welded to one Home Assistant core version — this pin
 # pulls homeassistant==2026.7.0 transitively. Bump both together (the HAcc release notes name the
 # HA version each release targets).
-pytest-homeassistant-custom-component==0.13.345
+pytest-homeassistant-custom-component==0.13.346
 pytest-cov>=5.0.0
 # Pinned exact: ruff's py314 formatter regression (astral-sh/ruff#23090, #25901) rewrites
 # `except (A, B):` to the unparenthesized form. Freeze the version so a future ruff that
