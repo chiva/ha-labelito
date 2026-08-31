@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SSL, CONF_VERIFY_SSL
 
 from custom_components.labelito.const import CONF_API_TOKEN
 
@@ -19,10 +19,24 @@ MOCK_TOKEN = "test-token"
 MOCK_CONFIG: dict[str, Any] = {
     CONF_HOST: MOCK_HOST,
     CONF_PORT: MOCK_PORT,
+    CONF_SSL: False,
+    CONF_VERIFY_SSL: True,
+    CONF_API_TOKEN: MOCK_TOKEN,
+}
+
+# The same service reached over a TLS-terminating proxy: identical host, https scheme.
+MOCK_CONFIG_SSL: dict[str, Any] = {**MOCK_CONFIG, CONF_SSL: True}
+
+# An entry stored before the TLS options existed: neither key is present. Every code path has to
+# keep treating it as plain HTTP, since that is what it has always been doing.
+MOCK_CONFIG_LEGACY: dict[str, Any] = {
+    CONF_HOST: MOCK_HOST,
+    CONF_PORT: MOCK_PORT,
     CONF_API_TOKEN: MOCK_TOKEN,
 }
 
 BASE_URL = f"http://{MOCK_HOST}:{MOCK_PORT}"
+SSL_BASE_URL = f"https://{MOCK_HOST}:{MOCK_PORT}"
 
 MOCK_SERIAL = "SN0123456789"
 

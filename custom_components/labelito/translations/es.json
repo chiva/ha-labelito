@@ -7,11 +7,15 @@
         "data": {
           "host": "Host",
           "port": "Puerto",
+          "ssl": "Usar HTTPS",
+          "verify_ssl": "Verificar el certificado SSL",
           "api_token": "Token de API"
         },
         "data_description": {
           "host": "Nombre de host o dirección IP donde se ejecuta labelito.",
-          "port": "Puerto HTTP de labelito (por defecto 8765).",
+          "port": "Puerto de labelito (8765 por defecto, o el del proxy si usas HTTPS).",
+          "ssl": "Conectar con labelito mediante HTTPS. labelito sirve HTTP sin cifrar, así que activa esto solo si está detrás de un proxy inverso que termina TLS (en ese caso el puerto suele ser 443).",
+          "verify_ssl": "Comprobar que el certificado es válido y de confianza. Solo se aplica con HTTPS activado; desactívalo si usas un certificado autofirmado.",
           "api_token": "El API_TOKEN configurado en el servicio labelito. Déjalo vacío si labelito se ejecuta con ALLOW_UNAUTHENTICATED=true."
         }
       },
@@ -25,20 +29,39 @@
         "data": {
           "api_token": "Token de API"
         }
+      },
+      "reconfigure": {
+        "title": "Ajustes de conexión de labelito",
+        "description": "Cambia dónde encuentra Home Assistant tu servicio labelito. El token de API se mantiene igual: usa Reconfigurar solo para la dirección y los ajustes de HTTPS.",
+        "data": {
+          "host": "Host",
+          "port": "Puerto",
+          "ssl": "Usar HTTPS",
+          "verify_ssl": "Verificar el certificado SSL"
+        },
+        "data_description": {
+          "host": "Nombre de host o dirección IP donde se ejecuta labelito.",
+          "port": "Puerto de labelito (8765 por defecto, o el del proxy si usas HTTPS).",
+          "ssl": "Conectar con labelito mediante HTTPS. labelito sirve HTTP sin cifrar, así que activa esto solo si está detrás de un proxy inverso que termina TLS (en ese caso el puerto suele ser 443).",
+          "verify_ssl": "Comprobar que el certificado es válido y de confianza. Solo se aplica con HTTPS activado; desactívalo si usas un certificado autofirmado."
+        }
       }
     },
     "error": {
       "cannot_connect": "No se pudo conectar con el servicio labelito.",
       "invalid_auth": "El servicio labelito rechazó el token de API.",
       "unsupported_api_version": "El servicio labelito usa una versión de API no compatible. Actualiza esta integración o el servicio labelito.",
-      "unknown": "Error inesperado."
+      "unknown": "Error inesperado.",
+      "ssl_error": "No se pudo establecer una conexión segura: el certificado fue rechazado. Revisa el certificado o desactiva su verificación si es autofirmado."
     },
     "abort": {
       "already_configured": "Este servicio labelito ya está configurado.",
       "cannot_connect": "No se pudo conectar con el complemento labelito descubierto.",
       "invalid_auth": "El complemento labelito descubierto rechazó el token de API.",
       "unsupported_api_version": "El complemento labelito descubierto usa una versión de API no compatible.",
-      "reauth_successful": "El token de API se actualizó."
+      "reauth_successful": "El token de API se actualizó.",
+      "wrong_printer": "Esa dirección responde con una impresora distinta de la que se configuró en esta entrada.",
+      "reconfigure_successful": "Se actualizaron los ajustes de conexión de labelito."
     }
   },
   "options": {

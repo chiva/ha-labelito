@@ -12,7 +12,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import ATTR_SEQUENCE, SEQ_KEY_COUNT
+from .const import ATTR_SEQUENCE, DEFAULT_SSL, SCHEME_HTTP, SCHEME_HTTPS, SEQ_KEY_COUNT
 
 PATH_HEALTH = "/health"
 PATH_PRINTER_STATUS = "/printer/status"
@@ -50,6 +50,15 @@ class LabelitoConnectionError(LabelitoError):
     """The labelito service could not be reached."""
 
 
+class LabelitoSSLError(LabelitoConnectionError):
+    """The TLS handshake with the labelito service failed — typically an untrusted certificate.
+
+    A subclass of LabelitoConnectionError so every existing "service unreachable" handler keeps
+    working unchanged; callers that can offer a remedy (the config flow, entry setup) catch this
+    first to name the actual problem instead of reporting a generic connection failure.
+    """
+
+
 class LabelitoAuthError(LabelitoError):
     """The API token was rejected (HTTP 401)."""
 
@@ -70,7 +79,12 @@ class LabelitoApiError(LabelitoError):
 
 
 class LabelitoClient:
-    """Minimal typed client over labelito's HTTP API."""
+    """Minimal typed client over labelito's HTTP API.
+
+    ``use_ssl`` selects the scheme only. Whether a server certificate is *verified* is a property
+    of the injected session (Home Assistant supplies a verifying or non-verifying shared session),
+    which keeps this module free of Home Assistant imports.
+    """
 
     def __init__(
         self,
@@ -78,8 +92,11 @@ class LabelitoClient:
         port: int,
         api_token: str | None,
         session: aiohttp.ClientSession,
+        *,
+        use_ssl: bool = DEFAULT_SSL,
     ) -> None:
-        self._base_url = f"http://{host}:{port}"
+        scheme = SCHEME_HTTPS if use_ssl else SCHEME_HTTP
+        self._base_url = f"{scheme}://{host}:{port}"
         self._api_token = api_token
         self._session = session
 
@@ -118,6 +135,11 @@ class LabelitoClient:
                 raise LabelitoApiError(response.status, detail)
         except TimeoutError as err:
             raise LabelitoConnectionError(f"Timeout talking to {self._base_url}") from err
+        except aiohttp.ClientSSLError as err:
+            # Base class of ClientConnectorCertificateError and ClientConnectorSSLError. Split out
+            # ahead of ClientError (its parent) because no amount of retrying fixes an untrusted,
+            # expired, or hostname-mismatched certificate — the user has to act.
+            raise LabelitoSSLError(f"TLS error talking to {self._base_url}: {err}") from err
         except aiohttp.ClientError as err:
             raise LabelitoConnectionError(f"Cannot connect to {self._base_url}: {err}") from err
 

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ssl
+
 import aiohttp
 import pytest
+from aiohttp.client_reqrep import ConnectionKey
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -15,6 +18,7 @@ from custom_components.labelito.api import (
     LabelitoAuthError,
     LabelitoClient,
     LabelitoConnectionError,
+    LabelitoSSLError,
     _print_timeout,
 )
 
@@ -25,11 +29,16 @@ from .const import (
     MOCK_PORT,
     MOCK_TEMPLATES,
     MOCK_TOKEN,
+    SSL_BASE_URL,
 )
 
 
-def _client(hass: HomeAssistant, token: str | None = MOCK_TOKEN) -> LabelitoClient:
-    return LabelitoClient(MOCK_HOST, MOCK_PORT, token, async_get_clientsession(hass))
+def _client(
+    hass: HomeAssistant, token: str | None = MOCK_TOKEN, *, use_ssl: bool = False
+) -> LabelitoClient:
+    return LabelitoClient(
+        MOCK_HOST, MOCK_PORT, token, async_get_clientsession(hass), use_ssl=use_ssl
+    )
 
 
 async def test_health_ok(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
@@ -145,3 +154,76 @@ async def test_reprint_posts_job_path(
 ) -> None:
     aioclient_mock.post(f"{BASE_URL}/reprint/job-1", json={"job_id": "job-1", "dry_run": False})
     assert (await _client(hass).reprint("job-1"))["job_id"] == "job-1"
+
+
+# aiohttp renders its TLS error messages from the connection key, so a real one is required:
+# with None the exception's own __str__ raises while the client formats its message.
+_CONNECTION_KEY = ConnectionKey(
+    host=MOCK_HOST,
+    port=MOCK_PORT,
+    is_ssl=True,
+    ssl=True,
+    proxy=None,
+    proxy_auth=None,
+    proxy_headers_hash=None,
+)
+
+
+async def test_base_url_defaults_to_plain_http(hass: HomeAssistant) -> None:
+    """The default has to stay http: entries predating the option carry no ssl key."""
+    assert _client(hass).base_url == BASE_URL
+
+
+async def test_base_url_uses_https_when_enabled(hass: HomeAssistant) -> None:
+    assert _client(hass, use_ssl=True).base_url == SSL_BASE_URL
+
+
+async def test_https_request_hits_the_tls_url(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """An ssl client must address https:// — the whole point of the option."""
+    aioclient_mock.get(f"{SSL_BASE_URL}/health", json=MOCK_HEALTH)
+    assert (await _client(hass, use_ssl=True).health())["api_version"] == 3
+    assert str(aioclient_mock.mock_calls[0][1]) == f"{SSL_BASE_URL}/health"
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        aiohttp.ClientConnectorCertificateError(
+            _CONNECTION_KEY, ssl.SSLCertVerificationError("self-signed")
+        ),
+        aiohttp.ClientConnectorSSLError(_CONNECTION_KEY, OSError("handshake failed")),
+    ],
+    ids=["untrusted_certificate", "handshake_failure"],
+)
+async def test_tls_failure_raises_ssl_error(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, exc: Exception
+) -> None:
+    """Both aiohttp TLS failure shapes map to the distinct SSL error, not a generic one."""
+    aioclient_mock.get(f"{SSL_BASE_URL}/health", exc=exc)
+    with pytest.raises(LabelitoSSLError):
+        await _client(hass, use_ssl=True).health()
+
+
+async def test_ssl_error_is_a_connection_error(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Subclassing is load-bearing: existing unreachable-service handlers must still catch it."""
+    aioclient_mock.get(
+        f"{SSL_BASE_URL}/health",
+        exc=aiohttp.ClientConnectorCertificateError(
+            _CONNECTION_KEY, ssl.SSLCertVerificationError("expired")
+        ),
+    )
+    with pytest.raises(LabelitoConnectionError):
+        await _client(hass, use_ssl=True).health()
+
+
+async def test_plain_connection_failure_is_not_reported_as_tls(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.get(f"{BASE_URL}/health", exc=aiohttp.ClientError("down"))
+    with pytest.raises(LabelitoConnectionError) as err:
+        await _client(hass).health()
+    assert not isinstance(err.value, LabelitoSSLError)

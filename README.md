@@ -71,6 +71,23 @@ setup is a single confirmation click.
 **Options** (gear icon): override the printer status poll interval (default 30 s for network
 printers, 90 s for USB).
 
+### HTTPS
+
+labelito serves plain HTTP by design, which is fine on a trusted LAN and the only thing the
+add-on needs. If you front it with a TLS-terminating reverse proxy — so the API token is not
+crossing the network in cleartext — tick **Use HTTPS** in the same step (the port is then usually
+`443`, not `8765`).
+
+**Verify SSL certificate** stays on by default, so an untrusted certificate fails loudly instead
+of being accepted silently. Turn it off only for a self-signed certificate you control; a
+certificate the integration cannot verify is reported as its own error, not as a generic
+connection failure.
+
+Already set up over HTTP? Use **Settings → Devices & services → labelito → ⋮ → Reconfigure** to
+change the address, port, and HTTPS settings in place — no need to delete and re-add the
+integration. Your API token is left untouched (use **Reconfigure** for the address, the reauth
+prompt for the token).
+
 ## Usage
 
 ```yaml
