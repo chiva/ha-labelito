@@ -8,7 +8,7 @@
 lah-beh-LEE-toh · `/la.beˈli.to/` · a Spanish diminutive of "label"
 
 [![Installations](https://img.shields.io/badge/dynamic/json?color=0258b1&logo=home-assistant&logoColor=white&label=installs&query=$.labelito.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)](https://analytics.home-assistant.io/)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-0258b1.svg)](https://hacs.xyz)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-0258b1.svg)](https://hacs.xyz)
 [![Latest release](https://img.shields.io/github/v/release/chiva/ha-labelito)](https://github.com/chiva/ha-labelito/releases)
 [![Hassfest](https://github.com/chiva/ha-labelito/actions/workflows/hassfest.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/hassfest.yml)
 [![HACS](https://github.com/chiva/ha-labelito/actions/workflows/hacs.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/hacs.yml)
@@ -49,11 +49,10 @@ printer service itself; it talks to a labelito service you run separately (or as
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=chiva&repository=ha-labelito&category=integration)
 
-The integration is not (yet) in the HACS default store, so add it as a custom repository:
+The integration is in the **HACS default store** — no custom repository needed:
 
-1. Click the badge above, **or** open **HACS → ⋮ → Custom repositories**, paste
-   `https://github.com/chiva/ha-labelito`, and pick type **Integration**.
-2. Search HACS for **labelito**, open it, and press **Download**.
+1. Click the badge above, **or** open **HACS** and search for **labelito**.
+2. Open the **labelito** entry and press **Download**.
 3. Restart Home Assistant.
 
 Manual alternative: copy `custom_components/labelito/` into `<config>/custom_components/` and
