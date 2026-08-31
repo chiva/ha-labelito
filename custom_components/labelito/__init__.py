@@ -3,16 +3,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PORT, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SSL, CONF_VERIFY_SSL, Platform
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
-from .api import LabelitoAuthError, LabelitoClient, LabelitoConnectionError
-from .const import CONF_API_TOKEN, DOMAIN, MAX_API_VERSION, MIN_API_VERSION
+from .api import LabelitoAuthError, LabelitoClient, LabelitoConnectionError, LabelitoSSLError
+from .const import (
+    CONF_API_TOKEN,
+    DEFAULT_SSL,
+    DEFAULT_VERIFY_SSL,
+    DOMAIN,
+    MAX_API_VERSION,
+    MIN_API_VERSION,
+)
 from .coordinator import LabelitoCoordinator
 from .intents import async_setup_intents
 from .services import async_setup_services
@@ -22,6 +32,31 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type LabelitoConfigEntry = ConfigEntry[LabelitoCoordinator]
+
+
+@callback
+def async_create_client(hass: HomeAssistant, data: Mapping[str, Any]) -> LabelitoClient:
+    """Build a client from config-entry data, or from candidate input in the config flow.
+
+    The single place where connection settings map onto a client, shared with the config flow so a
+    probe there behaves exactly like the live entry. Certificate verification is a property of Home
+    Assistant's shared sessions rather than of a request, so the session is chosen here instead of
+    inside the deliberately framework-free client. Entries created before the TLS options existed
+    carry neither key and fall back to plain HTTP — exactly what they were already doing.
+    """
+    use_ssl: bool = data.get(CONF_SSL, DEFAULT_SSL)
+    # Only meaningful over https; on plain HTTP the standard shared session is used so a leftover
+    # "don't verify" setting cannot quietly opt the entry into the non-verifying session.
+    verify_ssl: bool = (
+        data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL) if use_ssl else DEFAULT_VERIFY_SSL
+    )
+    return LabelitoClient(
+        data[CONF_HOST],
+        data[CONF_PORT],
+        data.get(CONF_API_TOKEN),
+        async_get_clientsession(hass, verify_ssl=verify_ssl),
+        use_ssl=use_ssl,
+    )
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -37,16 +72,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LabelitoConfigEntry) -> bool:
-    session = async_get_clientsession(hass)
-    client = LabelitoClient(
-        entry.data[CONF_HOST],
-        entry.data[CONF_PORT],
-        entry.data.get(CONF_API_TOKEN),
-        session,
-    )
+    client = async_create_client(hass, entry.data)
 
     try:
         health = await client.health()
+    except LabelitoSSLError as err:
+        # Deliberately not ConfigEntryNotReady: a rejected certificate never heals on its own, so
+        # retrying forever would hide a problem only the user can fix.
+        raise ConfigEntryError(
+            f"{err}. Fix the certificate, or turn off certificate verification for this entry "
+            "(Settings -> Devices & services -> labelito -> Reconfigure)"
+        ) from err
     except LabelitoConnectionError as err:
         raise ConfigEntryNotReady(f"labelito service unreachable: {err}") from err
 

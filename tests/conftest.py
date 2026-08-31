@@ -38,23 +38,25 @@ def register_labelito(
     status: dict | None = None,
     status_code: int = 200,
     templates: list | None = None,
+    base_url: str = BASE_URL,
 ) -> None:
     """Register the read endpoints the config flow and coordinator hit.
 
-    Defaults describe a healthy, reachable network printer; pass overrides to drive error paths.
+    Defaults describe a healthy, reachable network printer on plain HTTP; pass overrides to drive
+    error paths, or ``base_url=SSL_BASE_URL`` to serve the same service over https.
     """
     aioclient_mock.get(
-        f"{BASE_URL}/health",
+        f"{base_url}/health",
         json=health if health is not None else MOCK_HEALTH,
         status=health_status,
     )
     aioclient_mock.get(
-        f"{BASE_URL}/printer/status",
+        f"{base_url}/printer/status",
         json=status if status is not None else MOCK_STATUS,
         status=status_code,
     )
     aioclient_mock.get(
-        f"{BASE_URL}/templates",
+        f"{base_url}/templates",
         json=templates if templates is not None else MOCK_TEMPLATES,
     )
 

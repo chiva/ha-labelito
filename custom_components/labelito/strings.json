@@ -7,11 +7,15 @@
         "data": {
           "host": "Host",
           "port": "Port",
+          "ssl": "Use HTTPS",
+          "verify_ssl": "Verify SSL certificate",
           "api_token": "API token"
         },
         "data_description": {
           "host": "Hostname or IP address where labelito is running.",
-          "port": "labelito HTTP port (default 8765).",
+          "port": "labelito port (8765 by default, or the proxy's port when using HTTPS).",
+          "ssl": "Talk to labelito over HTTPS. labelito itself serves plain HTTP, so enable this only when it sits behind a TLS-terminating reverse proxy (the port is usually 443 then).",
+          "verify_ssl": "Check that the certificate is valid and trusted. Only applies with HTTPS enabled; turn it off for a self-signed certificate.",
           "api_token": "The API_TOKEN configured on the labelito service. Leave empty if labelito runs with ALLOW_UNAUTHENTICATED=true."
         }
       },
@@ -25,20 +29,39 @@
         "data": {
           "api_token": "API token"
         }
+      },
+      "reconfigure": {
+        "title": "labelito connection settings",
+        "description": "Change where Home Assistant reaches your labelito service. The API token is kept as it is — use Reconfigure only for the address and HTTPS settings.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "ssl": "Use HTTPS",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "host": "Hostname or IP address where labelito is running.",
+          "port": "labelito port (8765 by default, or the proxy's port when using HTTPS).",
+          "ssl": "Talk to labelito over HTTPS. labelito itself serves plain HTTP, so enable this only when it sits behind a TLS-terminating reverse proxy (the port is usually 443 then).",
+          "verify_ssl": "Check that the certificate is valid and trusted. Only applies with HTTPS enabled; turn it off for a self-signed certificate."
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to the labelito service.",
       "invalid_auth": "The labelito service rejected the API token.",
       "unsupported_api_version": "The labelito service speaks an unsupported API version. Update this integration or the labelito service.",
-      "unknown": "Unexpected error."
+      "unknown": "Unexpected error.",
+      "ssl_error": "Could not establish a secure connection: the certificate was rejected. Check the certificate, or turn off certificate verification if it is self-signed."
     },
     "abort": {
       "already_configured": "This labelito service is already configured.",
       "cannot_connect": "Failed to connect to the discovered labelito add-on.",
       "invalid_auth": "The discovered labelito add-on rejected the API token.",
       "unsupported_api_version": "The discovered labelito add-on speaks an unsupported API version.",
-      "reauth_successful": "The API token was updated."
+      "reauth_successful": "The API token was updated.",
+      "wrong_printer": "That address answers with a different printer than the one this entry was set up for.",
+      "reconfigure_successful": "The labelito connection settings were updated."
     }
   },
   "options": {

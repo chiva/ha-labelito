@@ -21,6 +21,16 @@ DEFAULT_PORT: Final = 8765
 CONF_API_TOKEN: Final = "api_token"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 
+# Scheme of the labelito base URL. The service speaks plain HTTP by design, so https is strictly
+# for deployments fronted by a TLS-terminating reverse proxy and stays opt-in: entries created
+# before the option existed carry no key and keep resolving to SCHEME_HTTP.
+SCHEME_HTTP: Final = "http"
+SCHEME_HTTPS: Final = "https"
+DEFAULT_SSL: Final = False
+# Consulted only when SSL is on. Verification defaults to enabled so a self-signed proxy
+# certificate fails loudly instead of being trusted silently; opting out is an explicit choice.
+DEFAULT_VERIFY_SSL: Final = True
+
 # /health reports the transport inferred from PRINTER_URI: "network", "usb", or "file".
 TRANSPORT_NETWORK: Final = "network"
 TRANSPORT_USB: Final = "usb"
