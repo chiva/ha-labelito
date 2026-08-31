@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/chiva/ha-labelito/compare/v1.1.0...v1.2.0) (2026-08-31)
+
+
+### Features
+
+* support https connections to the labelito service ([#34](https://github.com/chiva/ha-labelito/issues/34)) ([bc1f031](https://github.com/chiva/ha-labelito/commit/bc1f031ae506a09c2883c4bd48c5c0a155a0a9d3))
+
 ## [1.1.0](https://github.com/chiva/ha-labelito/compare/v1.0.1...v1.1.0) (2026-07-21)
 
 
