@@ -100,6 +100,22 @@ fields:
 So any existing template works with live data as long as it defines the field you target — you never
 embed an entity name in the template itself.
 
+### Dry-running voice prints
+
+By default, every successful voice match puts a label on the tape, which makes iterating on
+sentences or template names expensive. The integration's **Options** (gear icon on the config
+entry) carry a **Dry-run voice prints** toggle: while it is on, prints from the built-in
+`LabelitoPrint` intent are sent to labelito with `dry_run`, so the label is rendered and validated — a template miss, a missing required field or a
+media mismatch is reported exactly as it would be for a real print — but nothing is printed. The
+spoken reply leads with "Dry run: nothing printed" so a dry run can't be mistaken for a printer
+that quietly failed.
+
+**The toggle covers the built-in `LabelitoPrint` intent only** — option 1 above. Option 2 is
+still voice as far as you are concerned, but a `conversation` trigger calls the `labelito.print`
+service, which has its own `dry_run` field and never reads this option: those automations keep
+printing for real while you debug sentences. Worth knowing before you assume nothing can reach the
+tape.
+
 ### Limitations
 
 - **The `LabelitoPrint` intent's text is literal.** Saying "print the temperature" prints those

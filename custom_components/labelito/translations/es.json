@@ -70,7 +70,11 @@
         "title": "Opciones de labelito",
         "description": "Intervalo de sondeo del estado de la impresora en segundos. El valor por defecto es {network_default} s para impresoras de red y {usb_default} s para USB (una lectura de estado USB reclama brevemente la impresora).",
         "data": {
-          "scan_interval": "Intervalo de sondeo (segundos)"
+          "scan_interval": "Intervalo de sondeo (segundos)",
+          "voice_dry_run": "Prueba en seco para impresiones por voz"
+        },
+        "data_description": {
+          "voice_dry_run": "Envía a labelito las etiquetas pedidas por Assist como prueba en seco: se renderizan y validan, y los errores se informan igual, pero no se gasta cinta. Útil mientras ajustas frases o nombres de plantilla. No afecta al servicio labelito.print, que tiene su propio campo dry_run."
         }
       }
     }

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import ssl
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import patch
 
 import aiohttp
 import pytest
+import voluptuous as vol
 from aiohttp.client_reqrep import ConnectionKey
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SSL, CONF_VERIFY_SSL
@@ -21,7 +23,9 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClien
 from custom_components.labelito.const import (
     CONF_API_TOKEN,
     CONF_SCAN_INTERVAL,
+    CONF_VOICE_DRY_RUN,
     DOMAIN,
+    SCAN_INTERVAL_USB,
 )
 
 from .conftest import register_labelito
@@ -184,6 +188,62 @@ async def test_options_flow_updates_scan_interval(
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options[CONF_SCAN_INTERVAL] == 120
+
+
+async def test_options_flow_sets_voice_dry_run_without_pinning_usb_interval(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, mock_config_entry: MockConfigEntry
+) -> None:
+    """Enabling the dry-run toggle must not freeze a USB entry's derived poll interval.
+
+    The form now has a second, unrelated purpose, so it gets opened and saved by someone who never
+    looked at the interval. A USB entry polls at the derived 90 s with no option stored; if saving
+    wrote the field's value, the interval would become an explicit override — and a USB status read
+    claims the single device handle, which is exactly why it is polled less often.
+    """
+    register_labelito(aioclient_mock, health={**MOCK_HEALTH, "transport": "usb"})
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = mock_config_entry.runtime_data
+    assert coordinator.update_interval == SCAN_INTERVAL_USB
+
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    # Submit the interval the form was pre-filled with — i.e. the user touched only the toggle.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_SCAN_INTERVAL: int(SCAN_INTERVAL_USB.total_seconds()),
+            CONF_VOICE_DRY_RUN: True,
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_config_entry.options[CONF_VOICE_DRY_RUN] is True
+    # No override stored: the interval stays derived from the transport.
+    assert CONF_SCAN_INTERVAL not in mock_config_entry.options
+
+
+async def test_options_flow_keeps_an_explicit_interval_that_matches_the_default(
+    hass: HomeAssistant, mock_labelito: AiohttpClientMocker, mock_config_entry: MockConfigEntry
+) -> None:
+    """An interval the user DID choose must survive, even when it equals the derived value.
+
+    The drop above is keyed on the entry having had no override, so an explicit 30 s on a network
+    entry is not mistaken for "untouched" and silently removed.
+    """
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(mock_config_entry, options={CONF_SCAN_INTERVAL: 30})
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={CONF_SCAN_INTERVAL: 30, CONF_VOICE_DRY_RUN: False}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_config_entry.options[CONF_SCAN_INTERVAL] == 30
 
 
 async def test_user_flow_over_https(
@@ -435,3 +495,67 @@ async def test_reconfigure_of_entry_predating_the_tls_options(
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_SSL] is True
     assert entry.data[CONF_API_TOKEN] == MOCK_TOKEN
+
+
+def _schema_default(schema: vol.Schema, key: str) -> Any:
+    """The value an options form pre-fills a field with (what a user submits if they don't touch it)."""
+    for marker in schema.schema:
+        if marker == key:
+            default = marker.default
+            return default() if callable(default) else default
+    raise AssertionError(f"{key!r} is not in the form schema")
+
+
+async def test_options_flow_on_unloaded_entry_keeps_its_scan_interval(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """An explicit poll interval must survive saving the form while the entry is NOT_LOADED.
+
+    Home Assistant opens the options flow for an unloaded entry too — a labelito service that is
+    down puts the entry in SETUP_RETRY, which is *exactly* when someone might come here to turn on
+    the dry-run toggle. There is no coordinator to read the effective interval from then, so
+    pre-filling the transport default would show 30 s; submitting the form replaces the whole
+    options dict, so a stored 120 would be silently rewritten to 30. The stored override therefore
+    outranks every other source for the pre-filled value.
+    """
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(mock_config_entry, options={CONF_SCAN_INTERVAL: 120})
+    # Deliberately not set up: no runtime_data, so _effective_scan_interval has no coordinator.
+    assert mock_config_entry.state is config_entries.ConfigEntryState.NOT_LOADED
+
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    assert _schema_default(result["data_schema"], CONF_SCAN_INTERVAL) == 120
+
+    # Submit what the form offered — i.e. the user touched only the toggle.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={CONF_SCAN_INTERVAL: 120, CONF_VOICE_DRY_RUN: True},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_config_entry.options[CONF_SCAN_INTERVAL] == 120
+    assert mock_config_entry.options[CONF_VOICE_DRY_RUN] is True
+
+
+async def test_options_flow_preserves_options_outside_the_form(
+    hass: HomeAssistant, mock_labelito: AiohttpClientMocker, mock_config_entry: MockConfigEntry
+) -> None:
+    """Saving the form must not delete an option it does not carry.
+
+    async_create_entry replaces the options dict wholesale, so the submitted input is merged over
+    what is stored. Nothing lives outside the schema today; this pins the behaviour before the next
+    field added conditionally silently drops its neighbours.
+    """
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(mock_config_entry, options={"future_option": "keep me"})
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={CONF_SCAN_INTERVAL: 45, CONF_VOICE_DRY_RUN: True}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_config_entry.options["future_option"] == "keep me"
+    assert mock_config_entry.options[CONF_SCAN_INTERVAL] == 45

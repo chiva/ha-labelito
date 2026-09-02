@@ -21,6 +21,13 @@ DEFAULT_PORT: Final = 8765
 CONF_API_TOKEN: Final = "api_token"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 
+# Options-flow toggle: send Assist-driven prints to labelito as a dry run. The voice intent takes
+# no per-call flag (unlike the print service, whose dry_run is a service field), so without this
+# every attempt at a sentence or a template match consumes label stock. Off by default so voice
+# printing keeps working untouched for entries created before the option existed.
+CONF_VOICE_DRY_RUN: Final = "voice_dry_run"
+DEFAULT_VOICE_DRY_RUN: Final = False
+
 # Scheme of the labelito base URL. The service speaks plain HTTP by design, so https is strictly
 # for deployments fronted by a TLS-terminating reverse proxy and stays opt-in: entries created
 # before the option existed carry no key and keep resolving to SCHEME_HTTP.

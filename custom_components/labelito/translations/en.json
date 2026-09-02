@@ -70,7 +70,11 @@
         "title": "labelito options",
         "description": "Printer status poll interval in seconds. The default is {network_default} s for network printers and {usb_default} s for USB (a USB status read briefly claims the printer).",
         "data": {
-          "scan_interval": "Poll interval (seconds)"
+          "scan_interval": "Poll interval (seconds)",
+          "voice_dry_run": "Dry-run voice prints"
+        },
+        "data_description": {
+          "voice_dry_run": "Send labels requested through Assist to labelito as a dry run: they are rendered and validated, and errors are reported as usual, but no tape is used. Useful while tuning sentences or template names. Does not affect the labelito.print service, which has its own dry_run field."
         }
       }
     }

@@ -69,7 +69,11 @@ If labelito runs as the Home Assistant add-on, the integration is discovered aut
 setup is a single confirmation click.
 
 **Options** (gear icon): override the printer status poll interval (default 30 s for network
-printers, 90 s for USB).
+printers, 90 s for USB), and **dry-run voice prints** — prints from the built-in `LabelitoPrint`
+intent are rendered and validated but never put on tape, which is what makes tuning sentences and
+template names practical. It does not cover automations that call `labelito.print` from a
+`conversation` trigger; that service has its own `dry_run` field. See
+[docs/voice-assist.md](docs/voice-assist.md#dry-running-voice-prints).
 
 ### HTTPS
 
