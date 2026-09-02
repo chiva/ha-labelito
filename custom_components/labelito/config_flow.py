@@ -22,9 +22,11 @@ from .api import LabelitoAuthError, LabelitoConnectionError, LabelitoSSLError
 from .const import (
     CONF_API_TOKEN,
     CONF_SCAN_INTERVAL,
+    CONF_VOICE_DRY_RUN,
     DEFAULT_PORT,
     DEFAULT_SSL,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_VOICE_DRY_RUN,
     DOMAIN,
     MAX_API_VERSION,
     MIN_API_VERSION,
@@ -279,20 +281,60 @@ class LabelitoConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class LabelitoOptionsFlow(OptionsFlow):
-    """Options: override the transport-derived poll interval."""
+    """Options: override the transport-derived poll interval, and dry-run voice prints."""
+
+    def _effective_scan_interval(self) -> int:
+        """Seconds to pre-fill the poll-interval field with, in order of authority.
+
+        1. **The stored override.** An interval the user chose is authoritative and, crucially, is
+           the only source that survives the entry being unloaded. Home Assistant opens this flow
+           for a NOT_LOADED / SETUP_RETRY entry too, where there is no coordinator to ask — and
+           since submitting replaces the whole options dict, pre-filling anything else there would
+           overwrite the user's choice with a guess.
+        2. **The live coordinator's interval.** With no override this is the transport-derived
+           value (30 s network, 90 s USB), read from the coordinator rather than re-derived so
+           there is a single source of truth (see :class:`LabelitoCoordinator`).
+        3. **The network default.** Only when unloaded *and* unset, where the transport is
+           genuinely unknowable. Harmless: with no override stored, ``async_step_init`` drops the
+           key on save rather than pinning this guess.
+        """
+        stored: int | None = self.config_entry.options.get(CONF_SCAN_INTERVAL)
+        if stored is not None:
+            return int(stored)
+        coordinator = getattr(self.config_entry, "runtime_data", None)
+        interval = getattr(coordinator, "update_interval", None)
+        if interval is None:
+            return int(SCAN_INTERVAL_NETWORK.total_seconds())
+        return int(interval.total_seconds())
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        current = self._effective_scan_interval()
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
-        current = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL, int(SCAN_INTERVAL_NETWORK.total_seconds())
-        )
+            # Merge over what is stored: async_create_entry REPLACES the options dict, so a key
+            # this form does not carry would be deleted by saving it. Nothing is outside the schema
+            # today, but the form has already grown once and the next field to be added
+            # conditionally would silently drop the others.
+            options = {**self.config_entry.options, **user_input}
+            # Do not let saving this form pin a poll interval the user never chose. The form now
+            # has a second, unrelated purpose (the dry-run toggle), so it gets opened and saved by
+            # someone who never looked at the interval — and writing the option freezes it: a USB
+            # entry polling at its derived 90 s would be stored as whatever the field showed, and a
+            # later transport change could no longer move it. When the entry had no override and
+            # the submitted value is still the derived one, drop the key and leave it derived.
+            if (
+                CONF_SCAN_INTERVAL not in self.config_entry.options
+                and options.get(CONF_SCAN_INTERVAL) == current
+            ):
+                options.pop(CONF_SCAN_INTERVAL, None)
+            return self.async_create_entry(data=options)
+        current_dry_run = self.config_entry.options.get(CONF_VOICE_DRY_RUN, DEFAULT_VOICE_DRY_RUN)
         schema = vol.Schema(
             {
                 vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_SCAN_INTERVAL_SECONDS, max=MAX_SCAN_INTERVAL_SECONDS),
                 ),
+                vol.Required(CONF_VOICE_DRY_RUN, default=current_dry_run): cv.boolean,
             }
         )
         return self.async_show_form(

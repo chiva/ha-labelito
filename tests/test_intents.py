@@ -18,7 +18,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import intent
 
 from custom_components.labelito.api import LabelitoApiError
-from custom_components.labelito.const import INTENT_PRINT
+from custom_components.labelito.const import ATTR_DRY_RUN, CONF_VOICE_DRY_RUN, INTENT_PRINT
 from custom_components.labelito.intents import (
     LabelitoPrintIntentHandler,
     _split_template_and_text,
@@ -46,11 +46,17 @@ NO_REQUIRED_TEMPLATE: dict[str, Any] = {
 }
 
 
-def _make_coordinator(templates: list[dict[str, Any]] | None = None) -> Mock:
+def _make_coordinator(
+    templates: list[dict[str, Any]] | None = None,
+    options: dict[str, Any] | None = None,
+) -> Mock:
     catalog = list(templates if templates is not None else MOCK_TEMPLATES)
     coordinator = Mock()
     coordinator.async_get_templates = AsyncMock(return_value=catalog)
     coordinator.template_names = Mock(return_value=[t["name"] for t in catalog])
+    # A real dict, not a Mock attribute: the handler reads options.get(CONF_VOICE_DRY_RUN, ...),
+    # and an auto-created Mock would return a truthy Mock and silently dry-run every test.
+    coordinator.config_entry.options = dict(options or {})
     return coordinator
 
 
@@ -245,6 +251,35 @@ async def test_unknown_template_named_inside_text_is_not_printed(hass: HomeAssis
     execute.assert_not_awaited()
     assert "No conozco ninguna plantilla" in _speech(response)
     assert "queso" in _speech(response)  # still lists what IS available
+
+
+# --- the voice_dry_run option ----------------------------------------------------------------
+
+
+async def test_voice_dry_run_off_by_default_prints_for_real(hass: HomeAssistant) -> None:
+    _, execute = await _handle(hass, {"template": "pantry para sopa de tomate"})
+    assert _printed_request(execute)[ATTR_DRY_RUN] is False
+
+
+@pytest.mark.parametrize(
+    ("language", "slots", "expected_fragment"),
+    [
+        ("es", {"template": "pantry para sopa de tomate"}, "Prueba en seco"),
+        ("es", {"template": "pantry"}, "Prueba en seco"),
+        ("en", {"template": "pantry", "text": "tomato soup"}, "Dry run"),
+    ],
+)
+async def test_voice_dry_run_sends_flag_and_says_nothing_printed(
+    hass: HomeAssistant, language: str, slots: dict[str, Any], expected_fragment: str
+) -> None:
+    """The option must both reach labelito AND be audible: a silent dry run is indistinguishable
+    from a printer that quietly failed."""
+    coordinator = _make_coordinator(options={CONF_VOICE_DRY_RUN: True})
+
+    response, execute = await _handle(hass, slots, language=language, coordinator=coordinator)
+
+    assert _printed_request(execute)[ATTR_DRY_RUN] is True
+    assert expected_fragment in _speech(response)
 
 
 # --- the split helper in isolation ----------------------------------------------------------

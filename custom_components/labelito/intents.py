@@ -23,6 +23,8 @@ from .const import (
     ATTR_FIELDS,
     ATTR_LANGUAGE,
     ATTR_TEMPLATE,
+    CONF_VOICE_DRY_RUN,
+    DEFAULT_VOICE_DRY_RUN,
     INTENT_PRINT,
 )
 from .coordinator import LabelitoCoordinator
@@ -44,6 +46,10 @@ SPEECH: dict[str, dict[str, str]] = {
     "en": {
         "printed": "Printed a {template} label.",
         "printed_text": "Printed a {template} label for {text}.",
+        # Spoken when the voice_dry_run option is on. Worded so the absence of a label is the
+        # first thing heard: a silent success would be indistinguishable from a printer fault.
+        "dry_run": "Dry run: nothing printed. The {template} label is ready.",
+        "dry_run_text": "Dry run: nothing printed. The {template} label for {text} is ready.",
         "unknown_template": (
             "I don't know a label template called {template}. Available templates are: {templates}."
         ),
@@ -54,6 +60,10 @@ SPEECH: dict[str, dict[str, str]] = {
     "es": {
         "printed": "He imprimido una etiqueta de {template}.",
         "printed_text": "He imprimido una etiqueta de {template} para {text}.",
+        "dry_run": "Prueba en seco: no he impreso nada. La etiqueta de {template} está lista.",
+        "dry_run_text": (
+            "Prueba en seco: no he impreso nada. La etiqueta de {template} para {text} está lista."
+        ),
         "unknown_template": (
             "No conozco ninguna plantilla de etiqueta llamada {template}. "
             "Las plantillas disponibles son: {templates}."
@@ -307,11 +317,20 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
         # text recovered while resolving the template, but never clobber an explicit text slot.
         text = text or recovered_text
 
+        # A spoken print has no per-call dry_run (the sentence grammar carries only template and
+        # text), so the choice lives on the config entry. labelito still renders and validates a
+        # dry run, so a template miss or a missing required field is reported exactly as it would
+        # be for a real print — only the tape is spared. ``config_entry`` is typed optional on the
+        # coordinator base class; with none to read, the default (print for real) applies.
+        entry = coordinator.config_entry
+        dry_run = bool(
+            entry is not None and entry.options.get(CONF_VOICE_DRY_RUN, DEFAULT_VOICE_DRY_RUN)
+        )
         request: dict[str, Any] = {
             ATTR_TEMPLATE: template["name"],
             ATTR_FIELDS: {},
             ATTR_COPIES: 1,
-            ATTR_DRY_RUN: False,
+            ATTR_DRY_RUN: dry_run,
             ATTR_LANGUAGE: language,
         }
         if text:
@@ -331,7 +350,8 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
                 return self._error(response, speech["needs_text"].format(template=template["name"]))
             return self._error(response, speech["failed"].format(reason=err))
 
-        key = "printed_text" if text else "printed"
+        prefix = "dry_run" if dry_run else "printed"
+        key = f"{prefix}_text" if text else prefix
         response.async_set_speech(speech[key].format(template=template["name"], text=text))
         return response
 
