@@ -216,6 +216,20 @@
           "description": "Qué servicio labelito configurado usar. Solo necesario con varias instancias."
         }
       }
+    },
+    "write_voice_sentences": {
+      "name": "Escribir frases de voz",
+      "description": "Genera los archivos de frases personalizadas de Home Assistant para imprimir por voz a partir de las plantillas que labelito sirve ahora mismo, de modo que un nombre dicho se reconozca exactamente en lugar de adivinarse desde un comodín. Crea los archivos en custom_sentences/ si faltan, escribe una lista cerrada con los nombres de plantilla y alias que puede reconocer sin ambigüedad, y recarga la integración de conversación para que surta efecto sin reiniciar. Los nombres que deja fuera se reportan en la respuesta. A partir de entonces la lista se mantiene al día con el catálogo; borra labelito-templates.yaml para desactivarlo.",
+      "fields": {
+        "language": {
+          "name": "Idiomas",
+          "description": "Qué idiomas escribir, de aquellos para los que existe una gramática. Por defecto, todos."
+        },
+        "config_entry_id": {
+          "name": "Instancia de labelito",
+          "description": "De qué servicio labelito configurado leer el catálogo de plantillas. Solo hace falta si hay más de uno."
+        }
+      }
     }
   }
 }

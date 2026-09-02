@@ -23,6 +23,7 @@ from .const import (
     TEMPLATE_CACHE_TTL,
     TRANSPORT_NETWORK,
 )
+from .voice_sentences import async_refresh_voice_sentences
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,13 +104,19 @@ class LabelitoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         whose error handling (ConfigEntryNotReady/ConfigEntryAuthFailed) must not race a
         background task. The lock inside async_get_templates serializes against a concurrent
         explicit refresh, so this can never trigger a duplicate fetch.
+
+        The task re-syncs the generated voice grammar as well, which is why it is a wrapper rather
+        than async_get_templates itself: this is the one moment a catalog change is noticed on a
+        timer instead of in the middle of an utterance. It writes nothing unless the user opted in,
+        and nothing unless the content actually changed.
         """
         if self._templates is None:
             return
         age = time.monotonic() - self._templates_fetched_at
         if age >= TEMPLATE_CACHE_TTL.total_seconds():
             self.hass.async_create_task(
-                self.async_get_templates(), name="labelito template cache refresh"
+                async_refresh_voice_sentences(self),
+                name="labelito template cache refresh",
             )
 
     async def async_get_templates(self, force_refresh: bool = False) -> list[dict[str, Any]]:
@@ -140,7 +147,20 @@ class LabelitoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._templates
 
     def template_names(self, templates: list[dict[str, Any]]) -> list[str]:
-        return sorted(t["name"] for t in templates)
+        """Template names for user-facing lists, skipping any catalog entry without a usable one.
+
+        Skipped rather than raised because of where this is called: the voice handler reads it to
+        speak "I don't know that template, here are the ones I have". Vetting names in the matcher
+        while this still assumed the shape would only move the failure — a malformed catalog entry
+        would stop matching (correctly) and then crash while composing the message that explains
+        why. A name that is not a string cannot be printed or spoken, so leaving it out of the
+        list is the whole of the fix.
+        """
+        return sorted(
+            name
+            for t in templates
+            if isinstance(t, dict) and isinstance(name := t.get("name"), str) and name
+        )
 
     @property
     def cached_template_count(self) -> int | None:

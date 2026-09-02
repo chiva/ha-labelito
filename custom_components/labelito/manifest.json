@@ -1,6 +1,9 @@
 {
   "domain": "labelito",
   "name": "labelito",
+  "after_dependencies": [
+    "conversation"
+  ],
   "codeowners": [
     "@chiva"
   ],

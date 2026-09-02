@@ -24,7 +24,8 @@ dashboards, and by voice through Assist.
 - **`labelito.print` service** — print any template with field values, validated against the live
   catalog before anything reaches the printer. Supports auto-numbered (`{{seq}}`) batches.
 - **`labelito.reprint_last`** — service and button to print the last label again.
-- **Voice** — "print a pantry label for tomato soup" via Assist custom sentences.
+- **Voice** — "print a pantry label for tomato soup" via Assist custom sentences, generated from
+  your own templates (and their spoken aliases) so a name is matched exactly, not guessed.
 - **Add-on discovery** — one-click setup when labelito runs as the
   [addon-labelito](https://github.com/chiva/addon-labelito) add-on.
 
@@ -109,7 +110,7 @@ See the reference docs for the full surface:
   responses, and error behavior.
 - **[docs/entities.md](docs/entities.md)** — every sensor/binary sensor/button, and how the
   "Labels printed" counter is sourced.
-- **[docs/voice-assist.md](docs/voice-assist.md)** — installing the voice sentences for Assist
+- **[docs/voice-assist.md](docs/voice-assist.md)** — setting up the voice sentences for Assist
   (see also Home Assistant's [custom sentences docs](https://www.home-assistant.io/voice_control/custom_sentences_yaml/#customizing-responses)).
 
 Ready-to-adapt automations live in [`examples/`](examples/).

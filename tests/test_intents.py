@@ -22,6 +22,7 @@ from custom_components.labelito.const import ATTR_DRY_RUN, CONF_VOICE_DRY_RUN, I
 from custom_components.labelito.intents import (
     LabelitoPrintIntentHandler,
     _split_template_and_text,
+    spoken_name_index,
 )
 
 from .const import MOCK_TEMPLATES
@@ -567,3 +568,212 @@ async def test_punctuation_only_template_prints_nothing(hass: HomeAssistant) -> 
 
     execute.assert_not_awaited()
     assert "No conozco ninguna plantilla" in _speech(response)
+
+
+# --- aliases: alternative spoken names, resolved in the SHARED index -------------------------
+#
+# Aliases are resolved here and not only in the generated closed-list grammar, so an alias keeps
+# working when that file is stale, absent, or was never generated — and so the two paths can never
+# disagree about what a spoken name means.
+
+ALIASED_CATALOG: list[dict[str, Any]] = [
+    {**NO_REQUIRED_TEMPLATE, "name": "congelador", "aliases": ["congelado"]},
+    {**NO_REQUIRED_TEMPLATE, "name": "nevera"},
+]
+
+
+@pytest.mark.parametrize("spoken", ["congelado", "Congelado.", "congelado"])
+def test_an_alias_resolves_to_its_template(spoken: str) -> None:
+    template, text = _split_template_and_text(spoken, ALIASED_CATALOG)
+    assert template is not None
+    assert template["name"] == "congelador"
+    assert text is None
+
+
+def test_an_alias_resolves_with_recovered_text() -> None:
+    """The connector split runs against the alias exactly as it does against a name."""
+    template, text = _split_template_and_text("congelado para lasaña", ALIASED_CATALOG)
+    assert template is not None
+    assert template["name"] == "congelador"
+    assert text == "lasaña"
+
+
+def test_a_template_name_outranks_another_templates_alias() -> None:
+    """The one failure a matcher must never have: printing a different template than was named.
+
+    Without name precedence, an ``aliases: [nevera]`` on the freezer template would resolve — and
+    print — in place of the fridge template's own name.
+    """
+    catalog = [
+        {**NO_REQUIRED_TEMPLATE, "name": "nevera"},
+        {**NO_REQUIRED_TEMPLATE, "name": "congelador", "aliases": ["nevera"]},
+    ]
+    template, _text = _split_template_and_text("nevera", catalog)
+    assert template is not None
+    assert template["name"] == "nevera"
+
+
+def test_an_alias_two_templates_claim_resolves_to_neither() -> None:
+    catalog = [
+        {**NO_REQUIRED_TEMPLATE, "name": "nevera", "aliases": ["frio"]},
+        {**NO_REQUIRED_TEMPLATE, "name": "congelador", "aliases": ["frio"]},
+    ]
+    assert _split_template_and_text("frio", catalog) == (None, None)
+
+
+def test_an_alias_that_normalizes_to_nothing_is_ignored() -> None:
+    """``"."`` is a substring of nothing but the empty string is a substring of EVERY name.
+
+    An alias of pure punctuation would otherwise enter the index with an empty key and the
+    substring rule would hand back whichever catalog name is longest.
+    """
+    catalog = [{**NO_REQUIRED_TEMPLATE, "name": "congelador", "aliases": ["..."]}]
+    assert _split_template_and_text("...", catalog) == (None, None)
+
+
+def test_a_missing_aliases_key_is_not_an_error() -> None:
+    """The key is absent on a labelito older than the release that added aliases."""
+    template, _text = _split_template_and_text(
+        "nevera", [{**NO_REQUIRED_TEMPLATE, "name": "nevera"}]
+    )
+    assert template is not None
+
+
+@pytest.mark.parametrize("aliases", [None, [], "not-a-list", {"a": 1}, 42])
+def test_a_malformed_aliases_value_adds_no_spoken_forms(aliases: Any) -> None:
+    """labelito validates aliases, but the integration must not trust a server it does not own.
+
+    An earlier version of this test only asserted that the catalog still matched — which it did,
+    while a scalar `aliases` was quietly registering one spoken form per CHARACTER. Not crashing
+    was never the property worth pinning; not inventing vocabulary is.
+    """
+    catalog = [{**NO_REQUIRED_TEMPLATE, "name": "nevera", "aliases": aliases}]
+    assert sorted(spoken_name_index(catalog)) == ["nevera"]
+    template, _text = _split_template_and_text("nevera", catalog)
+    assert template is not None
+    assert template["name"] == "nevera"
+
+
+@pytest.mark.parametrize("spoken", ["nada", "otro", "lista", "aire"])
+def test_a_scalar_aliases_value_cannot_print_a_wrong_label(spoken: str) -> None:
+    """The consequence a type check prevents, stated as the failure it would be.
+
+    With ``aliases: "not-a-list"`` the index gained the one-letter forms n, o, t, a, l, i, s — and
+    a single letter is a substring of almost any utterance, so _fuzzy_match_template's containment
+    rule resolved it. Every word below was measured resolving to `nevera` and would have printed
+    that label.
+    """
+    catalog = [
+        {**NO_REQUIRED_TEMPLATE, "name": "nevera", "aliases": "not-a-list"},
+        {**NO_REQUIRED_TEMPLATE, "name": "congelador"},
+    ]
+    assert _split_template_and_text(spoken, catalog) == (None, None)
+
+
+def test_non_string_alias_entries_are_skipped_individually() -> None:
+    """One bad entry must not cost the good ones next to it."""
+    catalog = [{**NO_REQUIRED_TEMPLATE, "name": "nevera", "aliases": [123, {"a": 1}, None, "frio"]}]
+    assert sorted(spoken_name_index(catalog)) == ["frio", "nevera"]
+
+
+def test_the_generator_vocabulary_is_the_matchers_vocabulary() -> None:
+    """Every spoken form offered to the grammar must resolve here to the same template.
+
+    This is the contract between the two layers: the grammar hands back the canonical name, and
+    the handler looks it up again. A form that resolved differently — or not at all — would be
+    matched by voice and then reported as an unknown template.
+    """
+    from custom_components.labelito.intents import resolvable_spoken_forms
+
+    # Includes a contested pair on purpose: on a clean catalog every form round-trips trivially
+    # and this test proves nothing. "pantry-1"/"pantry_1" both normalize to "pantry 1", so the
+    # name is unresolvable while the alias on one of them stays unique — the exact shape that must
+    # not reach the grammar.
+    catalog = [
+        *ALIASED_CATALOG,
+        {**NO_REQUIRED_TEMPLATE, "name": "meal-prep"},
+        {**NO_REQUIRED_TEMPLATE, "name": "pantry-1", "aliases": ["despensa uno"]},
+        {**NO_REQUIRED_TEMPLATE, "name": "pantry_1"},
+    ]
+    for spoken, name in resolvable_spoken_forms(catalog).items():
+        template, _text = _split_template_and_text(spoken, catalog)
+        assert template is not None, spoken
+        assert template["name"] == name, spoken
+        # And the canonical name it returns must itself resolve, since that is what the handler
+        # receives from a closed-list match.
+        round_trip, _text = _split_template_and_text(name, catalog)
+        assert round_trip is not None and round_trip["name"] == name, name
+
+
+# --- a malformed catalog entry costs only itself ---------------------------------------------
+#
+# The catalog is an HTTP response from a service this integration does not own. Reading
+# template["name"] on a malformed entry raises KeyError, AttributeError or TypeError depending on
+# the shape — and before the entries were vetted, one bad one raised out of the shared index and
+# broke every spoken match for the whole catalog.
+
+MALFORMED_ENTRIES: list[Any] = [
+    {"description": "no name at all"},
+    {"name": 42},
+    {"name": None},
+    {"name": ""},
+    "not-a-mapping",
+    123,
+    None,
+]
+
+
+@pytest.mark.parametrize("bad", MALFORMED_ENTRIES)
+def test_a_malformed_catalog_entry_does_not_break_its_neighbours(bad: Any) -> None:
+    catalog = [bad, {**NO_REQUIRED_TEMPLATE, "name": "nevera"}]
+    assert sorted(spoken_name_index(catalog)) == ["nevera"]
+
+    template, _text = _split_template_and_text("nevera", catalog)
+    assert template is not None
+    assert template["name"] == "nevera"
+
+
+@pytest.mark.parametrize("bad", MALFORMED_ENTRIES)
+def test_a_malformed_catalog_entry_is_not_reachable_by_voice(bad: Any) -> None:
+    """It contributes no spoken form, which is not a loss: an unsayable name cannot be said."""
+    assert spoken_name_index([bad]) == {}
+
+
+def test_aliases_on_a_malformed_entry_are_ignored_too() -> None:
+    """An entry with no usable name cannot lend its aliases to anything.
+
+    ``out`` has to be a canonical name, so an alias whose template has none could only produce a
+    match the handler would then report as unknown.
+    """
+    assert spoken_name_index([{"name": 42, "aliases": ["frio"]}]) == {}
+
+
+@pytest.mark.parametrize("name", ["...", "   ", "-", "_", "¿?", "«»"])
+def test_a_punctuation_only_slot_cannot_resolve_a_template(name: str) -> None:
+    """A template whose name normalizes to nothing must not be reachable by an empty spoken form.
+
+    _split_template_and_text tests exact membership before _fuzzy_match_template's normalized-empty
+    guard runs, so an empty key in the index was matched directly — a speech-to-text engine that
+    heard only punctuation printed that template. Measured before the fix: "..." resolved to it.
+    """
+    catalog = [
+        {**NO_REQUIRED_TEMPLATE, "name": name},
+        {**NO_REQUIRED_TEMPLATE, "name": "nevera"},
+    ]
+    assert sorted(spoken_name_index(catalog)) == ["nevera"]
+    assert _split_template_and_text("...", catalog) == (None, None)
+    assert _split_template_and_text(name, catalog) == (None, None)
+
+
+def test_unsayable_names_are_reported_so_the_rename_is_discoverable() -> None:
+    from custom_components.labelito.intents import unsayable_template_names
+
+    catalog = [
+        {**NO_REQUIRED_TEMPLATE, "name": "..."},
+        {**NO_REQUIRED_TEMPLATE, "name": "   "},
+        {**NO_REQUIRED_TEMPLATE, "name": "nevera"},
+        {"name": 42},  # no usable name at all: a shape problem, not a pronunciation one
+    ]
+    # Sorted, like every other report the generator produces: deterministic output is what
+    # lets an unchanged catalog render a byte-identical file.
+    assert unsayable_template_names(catalog) == ["   ", "..."]
