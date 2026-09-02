@@ -66,6 +66,15 @@ SPEECH: dict[str, dict[str, str]] = {
 
 FUZZY_MATCH_CUTOFF = 0.6
 
+# Sentence punctuation a speech-to-text engine puts around an utterance. Streaming ASR models emit
+# mixed-case, punctuated text, so a spoken template name arrives as "pantry." whenever it lands at
+# the end of the sentence (which it always does for the no-text sentence, where {template} is the
+# trailing wildcard). Stripped from both sides of every comparison in _normalize so the exact match
+# still wins; without it "pantry." resolves only because _fuzzy_match_template's substring rule
+# happens to rescue it, and a name short enough to fall under FUZZY_MATCH_CUTOFF would not resolve
+# at all.
+SENTENCE_PUNCTUATION = ".,;:!?¡¿\"'«»…"
+
 # Connector phrases that sit between {template} and {text} in the sentence files (es: "para",
 # "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance into
 # the greedy trailing {template} wildcard (see docs/voice-assist.md), exactly one of these leading
@@ -85,7 +94,30 @@ def _speech_language(language: str | None) -> str:
 
 
 def _normalize(name: str) -> str:
-    return name.lower().replace("-", " ").replace("_", " ").strip()
+    return name.lower().replace("-", " ").replace("_", " ").strip(SENTENCE_PUNCTUATION + " ")
+
+
+def _index_by_normalized(templates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Index the catalog by normalized name, dropping any key more than one template claims.
+
+    :func:`_normalize` is lossy — it folds ``-``/``_`` to spaces and strips sentence punctuation —
+    so distinct names can share a key: ``pantry-1`` and ``pantry_1`` both become "pantry 1", and
+    both are legal saved names (labelito's save charset allows ``-`` and ``_``). A plain dict
+    comprehension let whichever entry came last in the catalog own that key, so a spoken "pantry
+    one" could resolve to, and print, the other template.
+
+    An ambiguous key resolves to nothing instead. The caller then speaks the unknown-template
+    prompt with the real names, which is the only answer that cannot produce the wrong label —
+    there is genuinely no way to tell which of the two was meant. Ambiguous names are also kept out
+    of the substring and fuzzy passes, for the same reason.
+
+    Grouping is by DISTINCT raw name, so a catalog that somehow lists one template twice is not
+    mistaken for a collision (the registry keys by name, so this should not arise).
+    """
+    grouped: dict[str, dict[str, dict[str, Any]]] = {}
+    for template in templates:
+        grouped.setdefault(_normalize(template["name"]), {})[template["name"]] = template
+    return {key: next(iter(by_raw.values())) for key, by_raw in grouped.items() if len(by_raw) == 1}
 
 
 def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -97,8 +129,17 @@ def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[
     neighbour like ``grift``. The longest overlapping name wins, so an overlapping catalog (e.g.
     freezer / freezer-dated) resolves to the more specific template regardless of catalog order.
     """
-    by_normalized = {_normalize(t["name"]): t for t in templates}
+    by_normalized = _index_by_normalized(templates)
     wanted = _normalize(spoken)
+    if not wanted:
+        # Nothing survived normalization — a punctuation-only slot ("." from an ASR that heard no
+        # template), or an empty prefix before a connector. This MUST return before the substring
+        # pass: `"" in name` holds for every template, so containment would hand back whichever
+        # catalog name is longest, and the caller would print it. Guarded here, at the single
+        # place that compares against the catalog, rather than at each call site — the raw string
+        # can be non-empty while normalizing to nothing (", para queso" has prefix ","), so a
+        # caller-side truthiness check does not cover it.
+        return None
     if wanted in by_normalized:
         return by_normalized[wanted]
     substring_matches = [
@@ -130,28 +171,67 @@ def _split_template_and_text(
     diga``/``that says``): the *first* connector phrase is then the template/text boundary —
     everything before it is the template name (matched exactly or fuzzily, so ASR variants like
     "pantri" still resolve), everything after is the spoken text (which may itself contain
-    connectors — only the first is consumed). With no connector, the whole utterance is a template
-    name and there is no free text.
+    connectors — only the first is consumed).
+
+    Every branch below is annotated with the utterance that reaches it, since the slot values are
+    what ``recognize_best`` produced rather than anything a user typed. Assume a catalog of
+    ``pantry`` / ``freezer`` / ``freezer-dated`` / ``queso``, and read `→` as "resolves to".
+
+    1. **Exact name** — "pantry" → ``pantry`` + no text. Wins before anything else, so a name that
+       itself contains a connector word survives: "gift for christmas" →
+       ``gift-for-christmas``, not ``gift`` + text "christmas".
+
+    2. **Connector boundary, prefix resolves** — the normal recovery.
+       "pantry para sopa de tomate" → ``pantry`` + "sopa de tomate".
+       "pantri que diga lasaña" → ``pantry`` + "lasaña" (ASR variant, fuzzily matched).
+       Only the FIRST connector is the boundary, so the text may contain more:
+       "pantry para para mañana" → ``pantry`` + "para mañana".
+
+    3. **Connector boundary, prefix does not resolve — a miss, deliberately not a fallback.**
+       "nevera para queso manchego" with no ``nevera`` template → nothing.
+       Falling through to a whole-utterance match here would let the substring rule in
+       :func:`_fuzzy_match_template` return ``queso`` — a template merely *named inside the
+       dictated text* — with no text, so a template with no required fields would print the wrong
+       label and confirm it, and one with required fields would ask for text nobody was offering.
+
+    4. **Connector boundary with a prefix that names nothing — the same miss.**
+       "para queso manchego", which is what "haz una etiqueta para queso manchego" collapses to
+       once the optional "de" is omitted (likewise "que diga queso manchego"). Also
+       ", para queso manchego", where the prefix is punctuation an ASR emitted and normalizes to
+       nothing. Neither names a template, so neither resolves — :func:`_fuzzy_match_template`
+       rejects a normalized-empty value outright, because ``"" in name`` is true for every
+       template and its substring rule would otherwise return the longest catalog name *together
+       with* the dictated text: a plausible-looking wrong label that prints even for a
+       required-field template.
+
+    5. **No connector anywhere** — the whole utterance is a template name, ASR noise included, so
+       the substring rule is the intended rescue: "freezer dated uno dos tres" → ``freezer-dated``.
     """
-    by_normalized = {_normalize(t["name"]): t for t in templates}
+    by_normalized = _index_by_normalized(templates)
     if _normalize(spoken) in by_normalized:
-        return by_normalized[_normalize(spoken)], None
+        return by_normalized[_normalize(spoken)], None  # case 1
 
     tokens = spoken.split()
     normalized = [_normalize(token) for token in tokens]
-    for index in range(1, len(tokens)):
+    # From index 0, not 1: a connector opening the slot (case 4) still marks a boundary, and
+    # skipping it would misfile the utterance as "no connector" and drop it into case 5 — the very
+    # fallback cases 3 and 4 exist to avoid.
+    for index in range(len(tokens)):
         phrase = next(
             (p for p in CONNECTOR_PHRASES if tuple(normalized[index : index + len(p)]) == p),
             None,
         )
         if phrase is None:
             continue
+        # A prefix that names no template cannot resolve, including one that is empty or is pure
+        # punctuation (", para queso"). Both are handled by _fuzzy_match_template's own
+        # normalized-empty guard, so there is exactly one place that decides it.
         template = _fuzzy_match_template(" ".join(tokens[:index]), templates)
         if template is not None:
-            return template, " ".join(tokens[index + len(phrase) :]).strip() or None
-        break  # first connector's prefix did not resolve — fall back to a whole-utterance match
+            return template, " ".join(tokens[index + len(phrase) :]).strip() or None  # case 2
+        return None, None  # cases 3 and 4
 
-    return _fuzzy_match_template(spoken, templates), None
+    return _fuzzy_match_template(spoken, templates), None  # case 5
 
 
 def _text_field_name(template: dict[str, Any]) -> str | None:
