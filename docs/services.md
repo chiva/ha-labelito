@@ -106,3 +106,9 @@ reports it in plain words (for example "The loaded roll is 62mm continuous but t
 
 Reprints the most recent label printed through Home Assistant (tracked per Home Assistant run; it
 resets on restart). Mirrored by the **Reprint last label** button.
+
+A `dry_run` print is **not** a reprint target: it never becomes "the last label", so the last one
+you actually printed stays reprintable no matter how many dry runs happen in between. That matters
+because labelito will happily reprint a dry-run job as a real label if asked — its `/reprint`
+refuses only a *failed* job — so tracking one here would turn this service into a physical copy of
+something deliberately not printed.

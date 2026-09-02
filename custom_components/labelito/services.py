@@ -288,13 +288,21 @@ async def async_execute_print(
             except LabelitoError:
                 names = None
         _raise_for_api_error(err, names)
-    coordinator.last_job_id = result[ATTR_JOB_ID]
     # A sequence batch prints sequence.count labels but labelito echoes copies=1, so the batch size
     # is read from the request we just sent, not the response. Remember it for reprint-last.
     printed_labels = (
         request[ATTR_SEQUENCE][SEQ_KEY_COUNT] if ATTR_SEQUENCE in request else result[ATTR_COPIES]
     )
-    coordinator.last_job_labels = printed_labels
+    # A dry run must NOT become the reprint-last target. labelito's /reprint refuses only a
+    # ``failed`` job, and a dry run is recorded as ``dry-run`` — so reprinting one PRINTS it,
+    # turning "reprint the last label" into a physical copy of something deliberately not printed,
+    # and discarding the real last job on the way. The previous physical job stays reprintable,
+    # which is what the button and the service claim to do. Guarded here rather than at the call
+    # sites because every print path funnels through this helper, exactly as _record_ha_print does
+    # for the labels-printed counter (which already skips dry runs).
+    if not result[ATTR_DRY_RUN]:
+        coordinator.last_job_id = result[ATTR_JOB_ID]
+        coordinator.last_job_labels = printed_labels
     _record_ha_print(coordinator, result, printed_labels)
     return result
 
