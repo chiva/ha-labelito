@@ -227,6 +227,26 @@ async def test_template_miss_forces_catalog_refresh_then_prints(hass: HomeAssist
     assert coordinator.async_get_templates.await_args_list[1].kwargs == {"force_refresh": True}
 
 
+async def test_unknown_template_named_inside_text_is_not_printed(hass: HomeAssistant) -> None:
+    """An unknown template before a connector must not resolve to one named in the dictated text.
+
+    "haz una etiqueta de nevera para queso manchego" with no ``nevera`` template used to print a
+    ``queso`` label with no text at all — the substring fallback matched the word inside the
+    dictated text. The user gets the unknown-template prompt and nothing is printed.
+    """
+    coordinator = _make_coordinator(
+        templates=[{"name": "queso", "fields": {"required": ["title"], "optional": []}}]
+    )
+
+    response, execute = await _handle(
+        hass, {"template": "nevera para queso manchego"}, coordinator=coordinator
+    )
+
+    execute.assert_not_awaited()
+    assert "No conozco ninguna plantilla" in _speech(response)
+    assert "queso" in _speech(response)  # still lists what IS available
+
+
 # --- the split helper in isolation ----------------------------------------------------------
 
 
@@ -237,6 +257,18 @@ async def test_template_miss_forces_catalog_refresh_then_prints(hass: HomeAssist
         ("pantry que diga sopa de tomate", "pantry", "sopa de tomate"),
         ("pantry", "pantry", None),
         ("banana", None, None),
+        # Streaming ASR models punctuate their output, and the no-text sentence puts {template}
+        # last, so the template name reliably arrives with a trailing period.
+        ("pantry.", "pantry", None),
+        ("¡pantry!", "pantry", None),
+        # A punctuated connector still marks the boundary (_normalize runs per token). This is the
+        # case the strip actually buys: without it "diga," never equals "diga", no boundary is
+        # found, and the whole utterance falls through to a substring match on "pantry" — losing
+        # the dictated text entirely. The trailing-period cases above are rescued by the substring
+        # rule either way; they document intent rather than guard a behaviour change.
+        ("pantry, que diga sopa de tomate", "pantry", "sopa de tomate"),
+        ("pantry que diga, sopa de tomate", "pantry", "sopa de tomate"),
+        ("pantry that says: cheese", "pantry", "cheese"),
     ],
 )
 def test_split_template_and_text(
@@ -294,12 +326,77 @@ _OVERLAP_CATALOG = [{"name": "freezer"}, {"name": "freezer-dated"}]
         ),
         # Substring fallback in _fuzzy_match_template prefers the longest overlapping name over
         # catalog order: "freezer" is listed first but "freezer-dated" is the more specific match.
+        # No connector is present here, which is what keeps that whole-utterance rescue legal.
         (
             "freezer dated uno dos tres cuatro",
             [{"name": "freezer"}, {"name": "freezer-dated"}],
             "freezer-dated",
             None,
         ),
+        # REGRESSION (silent wrong label): a connector DID mark a boundary but "nevera" is not a
+        # template, so this must be reported as a miss. Without the saw_connector guard the
+        # whole-utterance fallback ran and its substring rule matched "queso" — a template merely
+        # named inside the dictated text — returning text=None, i.e. a queso label with no text.
+        (
+            "nevera para queso manchego",
+            [{"name": "queso"}, {"name": "congelador"}],
+            None,
+            None,
+        ),
+        # Same shape in English, and with the mentioned template at the very end of the text.
+        (
+            "unknown that says cheese",
+            [{"name": "cheese"}],
+            None,
+            None,
+        ),
+        # REGRESSION (silent wrong label, leading connector): the slot OPENS with a connector, so
+        # there is no name before the boundary at all. Reached by omitting the optional "de":
+        # "haz una etiqueta para queso manchego" collapses to exactly this — verified against
+        # hassil in test_hassil_leading_connector_collapses_into_template below. The scan used to
+        # start at index 1, which misfiled this as "no connector" and dropped it into the
+        # whole-utterance fallback, where the substring rule returned `queso` with no text.
+        ("para queso manchego", [{"name": "queso"}], None, None),
+        # Both connector forms, since the two-word one is a separate code path.
+        ("que diga queso manchego", [{"name": "queso"}], None, None),
+        ("for cheese with ham", [{"name": "cheese"}], None, None),
+        ("that says cheese with ham", [{"name": "cheese"}], None, None),
+        # An empty prefix must not be handed to _fuzzy_match_template at all: "" is a substring of
+        # every name, so its containment rule would return an arbitrary template. With more than
+        # one candidate the longest would win, which is why this case names two.
+        ("para algo", [{"name": "queso"}, {"name": "freezer-dated"}], None, None),
+        # REGRESSION (arbitrary template, WITH the dictated text): a prefix that is non-empty as a
+        # string but normalizes to nothing. Introduced by the punctuation stripping itself — the
+        # guard was on the raw prefix, and "," is truthy. This is the worst shape of the family:
+        # the text after the connector IS recovered, so the print goes through even for a
+        # required-field template, producing a plausible-looking label under the wrong template.
+        (
+            ", para queso manchego",
+            [{"name": "queso"}, {"name": "freezer-dated"}],
+            None,
+            None,
+        ),
+        (
+            ". que diga lasaña",
+            [{"name": "queso"}, {"name": "freezer-dated"}],
+            None,
+            None,
+        ),
+        # Punctuation-only slots, i.e. an ASR that heard no template name at all.
+        (".", [{"name": "queso"}, {"name": "freezer-dated"}], None, None),
+        ("...", [{"name": "queso"}, {"name": "freezer-dated"}], None, None),
+        ("¿?", [{"name": "queso"}, {"name": "freezer-dated"}], None, None),
+        # AMBIGUOUS CATALOG: _normalize is lossy, so two distinct names can share a key. Neither
+        # can be chosen, so both resolve to nothing rather than letting catalog order decide.
+        # This pair is the PRE-EXISTING case — "-" and "_" were already folded to spaces before
+        # the punctuation stripping, and both are legal saved names, so it is the reachable one.
+        ("pantry 1", [{"name": "pantry-1"}, {"name": "pantry_1"}], None, None),
+        ("pantry-1", [{"name": "pantry-1"}, {"name": "pantry_1"}], None, None),
+        # And the pair the punctuation stripping adds. Only reachable via a hand-authored YAML,
+        # since labelito's save charset rejects "!" outright.
+        ("pantry", [{"name": "pantry"}, {"name": "pantry!"}], None, None),
+        # An unambiguous catalog is untouched: folding still resolves a spoken name to its file.
+        ("freezer dated", [{"name": "freezer-dated"}, {"name": "pantry"}], "freezer-dated", None),
     ],
 )
 def test_split_template_and_text_prefix_overlap(
@@ -347,3 +444,91 @@ def test_hassil_recognize_best_folds_spanish_text_into_template() -> None:
 
     en = best("en", "print a pantry label for tomato soup")
     assert en == {"template": "pantry", "text": "tomato soup"}  # anchored, text extracted
+
+
+def test_hassil_leading_connector_collapses_into_template() -> None:
+    """The shipped Spanish grammar really can hand the handler a slot that OPENS with a connector.
+
+    The no-text sentence is "imprime una etiqueta [de] {template}" — with the optional "de" left
+    out, everything after "etiqueta" lands in the wildcard, connector included. This is the input
+    that makes the empty-prefix case (case 4 in _split_template_and_text) reachable rather than
+    theoretical, so it is pinned against the real grammar instead of assumed.
+    """
+    hassil = pytest.importorskip("hassil")
+    import pathlib
+
+    import yaml
+    from hassil.recognize import recognize_best
+
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    data = yaml.safe_load((repo / "custom_sentences" / "es" / "labelito.yaml").read_text())
+    intents = hassil.Intents.from_dict(data)
+
+    def best(utterance: str) -> dict[str, str] | None:
+        result = recognize_best(
+            utterance,
+            intents,
+            best_metadata_key="hass_custom_sentence",
+            best_slot_name="name",
+        )
+        return None if result is None else {k: v.text for k, v in result.entities.items()}
+
+    assert best("haz una etiqueta para queso manchego") == {"template": "para queso manchego"}
+    assert best("haz una etiqueta que diga queso manchego") == {
+        "template": "que diga queso manchego"
+    }
+
+
+async def test_leading_connector_prints_nothing(hass: HomeAssistant) -> None:
+    """The severity of the leading-connector case: it used to PRINT, not just misreport.
+
+    With a template that has no required fields, labelito accepts a print with no fields, so the
+    old whole-utterance fallback resolved `queso`, sent the job, and confirmed "He imprimido una
+    etiqueta de queso" — a wrong label with a cheerful confirmation. Nothing may be printed here.
+    """
+    coordinator = _make_coordinator(
+        templates=[{"name": "queso", "fields": {"required": [], "optional": []}}]
+    )
+
+    response, execute = await _handle(
+        hass, {"template": "para queso manchego"}, coordinator=coordinator
+    )
+
+    execute.assert_not_awaited()
+    assert "No conozco ninguna plantilla" in _speech(response)
+
+
+async def test_punctuation_prefix_prints_nothing(hass: HomeAssistant) -> None:
+    """The worst shape of the named-in-text family: it prints WITH text, so nothing stops it.
+
+    A prefix of pure punctuation normalizes to nothing but is a non-empty string, so the raw-prefix
+    guard let it through to the substring rule, which returns the longest catalog name. The text
+    after the connector is recovered normally, so the print is not saved by a missing-field 422
+    either: the user asked for nothing and would get a `freezer-dated` label reading
+    "queso manchego".
+    """
+    coordinator = _make_coordinator(
+        templates=[
+            {"name": "queso", "fields": {"required": ["title"], "optional": []}},
+            {"name": "freezer-dated", "fields": {"required": ["title"], "optional": []}},
+        ]
+    )
+
+    response, execute = await _handle(
+        hass, {"template": ", para queso manchego"}, coordinator=coordinator
+    )
+
+    execute.assert_not_awaited()
+    assert "No conozco ninguna plantilla" in _speech(response)
+
+
+async def test_punctuation_only_template_prints_nothing(hass: HomeAssistant) -> None:
+    """A slot of pure punctuation names no template, so it must not resolve to the longest one."""
+    coordinator = _make_coordinator(
+        templates=[{"name": "freezer-dated", "fields": {"required": [], "optional": []}}]
+    )
+
+    response, execute = await _handle(hass, {"template": "."}, coordinator=coordinator)
+
+    execute.assert_not_awaited()
+    assert "No conozco ninguna plantilla" in _speech(response)

@@ -143,6 +143,29 @@ limitation below). If a required-field template still ends up with no text, labe
 a `missing_required` 422 (labelito stays authoritative, so a stale cached catalog can't wrongly veto
 a print), and the handler turns that into an actionable spoken prompt instead of the raw error.
 
+**When the name before the connector isn't a template**, the utterance is reported as a miss and
+you hear the unknown-template prompt with the real template list. It is deliberately *not* matched
+as a whole: the fuzzy matcher's substring rule would then happily return a template merely *named
+inside the dictated text* — *"haz una etiqueta de nevera para queso manchego"* with no `nevera`
+template would print a `queso` label with no text at all — which is a wrong label produced
+silently. Only when no connector is present at all does the whole utterance go to the fuzzy
+matcher, where that substring rule is the intended rescue for ASR noise
+(*"freezer dated uno dos tres"* → `freezer-dated`).
+
+**The same applies when there is no name at all.** Because *de* is optional, *"haz una etiqueta
+para queso manchego"* collapses to `template="para queso manchego"` — a slot that opens with a
+connector. There is nothing before the boundary to resolve, so it is the same miss, as is a slot
+that is only punctuation (*"."*, or a *", para …"* your speech-to-text engine punctuated) since
+none of that names a template either. Worth knowing because the first is the shape you get from a
+perfectly natural sentence that simply omits the template: you will hear the available templates
+rather than a label you did not ask for.
+
+**Punctuation is normalized away.** Streaming speech-to-text engines emit mixed-case, punctuated
+text, and the no-text sentence puts `{template}` last — so the template name reliably arrives as
+*"pantry."*. `_normalize` strips sentence punctuation from both sides of every comparison, which
+also means a punctuated connector (*"que diga,"*) still marks the template/text boundary instead
+of silently discarding the dictated text.
+
 `tests/test_intents.py` locks this down, including a `recognize_best` regression test over the
 shipped YAML so the behavior can be re-validated if the sentence files change.
 
