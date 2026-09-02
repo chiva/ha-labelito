@@ -128,6 +128,36 @@ async def test_execute_print_dry_run_does_not_count(
     assert coordinator.ha_printed_count == 0
 
 
+async def test_execute_print_dry_run_does_not_become_reprint_target(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    """A dry run must leave the last PHYSICAL job as the reprint-last target.
+
+    labelito's /reprint refuses only a ``failed`` job, and a dry run is stored as ``dry-run`` — so
+    a dry run that captured last_job_id would be reprinted as a real physical label, and the job
+    the user actually printed would be lost. Reprint-last would then print something that was
+    deliberately never printed.
+    """
+    await async_execute_print(
+        coordinator, {"template": "pantry", "fields": {}, "copies": 2, "dry_run": False}
+    )
+    real_job, real_labels = coordinator.last_job_id, coordinator.last_job_labels
+    assert real_job == "job-1"
+
+    client.print_label.return_value = {
+        "job_id": "dry-job",
+        "template": "pantry",
+        "copies": 1,
+        "dry_run": True,
+    }
+    await async_execute_print(
+        coordinator, {"template": "pantry", "fields": {}, "copies": 1, "dry_run": True}
+    )
+
+    assert coordinator.last_job_id == real_job
+    assert coordinator.last_job_labels == real_labels
+
+
 async def test_execute_print_maps_409_to_validation_error(
     coordinator: LabelitoCoordinator, client: AsyncMock
 ) -> None:
