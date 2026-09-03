@@ -25,7 +25,10 @@ jobs:
           cache: pip
       - run: pip install -r requirements_test.txt
       - name: Run tests
-        run: pytest --cov=custom_components.labelito --cov-report=xml --cov-report=term-missing
+        # Coverage source and the 85% floor both come from pyproject.toml, so a bare `--cov` here
+        # behaves identically to a local run. The floor is what gates the PR; the Codecov upload
+        # below only publishes the number, which is why it stays non-blocking.
+        run: pytest --cov --cov-report=xml --cov-report=term-missing
       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           files: coverage.xml
