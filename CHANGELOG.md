@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/chiva/ha-labelito/compare/v1.2.0...v1.3.0) (2026-09-03)
+
+
+### Features
+
+* **voice:** add a dry-run option for Assist-driven prints ([#39](https://github.com/chiva/ha-labelito/issues/39)) ([1335c12](https://github.com/chiva/ha-labelito/commit/1335c121857ee5af3a284eb90ba4c52e6094e6e6))
+* **voice:** add a dry-run option for Assist-driven prints ([#42](https://github.com/chiva/ha-labelito/issues/42)) ([3c3e5e3](https://github.com/chiva/ha-labelito/commit/3c3e5e3b5f97d4baaeed5f067b7576294455f9be))
+* **voice:** match spoken template names against a generated closed list ([#41](https://github.com/chiva/ha-labelito/issues/41)) ([4fb4899](https://github.com/chiva/ha-labelito/commit/4fb48990982d79c062a737e9ed55a54579e7e3fc))
+
+
+### Bug Fixes
+
+* **services:** never make a dry run the reprint-last target ([#38](https://github.com/chiva/ha-labelito/issues/38)) ([cd492f9](https://github.com/chiva/ha-labelito/commit/cd492f9648f180da1f2bb43c45d64891db9bcf3e))
+* **voice:** harden template matching against real speech-to-text output ([#37](https://github.com/chiva/ha-labelito/issues/37)) ([530e6e0](https://github.com/chiva/ha-labelito/commit/530e6e015db960d941465971b58f834262fe084a))
+
 ## [1.2.0](https://github.com/chiva/ha-labelito/compare/v1.1.0...v1.2.0) (2026-08-31)
 
 
