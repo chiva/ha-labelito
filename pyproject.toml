@@ -34,3 +34,15 @@ exclude = ["tests/"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = ["-v", "--tb=short"]
+
+# Coverage config lives here rather than on the pytest command line so `pytest --cov` behaves the
+# same locally and in CI, matching labelito's layout.
+[tool.coverage.run]
+source = ["custom_components/labelito"]
+
+[tool.coverage.report]
+# Same floor as labelito (85). Measured coverage is ~93%, so this is a regression guard rather than
+# a target: it turns CI red when a change drops coverage by roughly eight points, without demanding
+# new tests for code that is already exercised.
+fail_under = 85
+show_missing = true

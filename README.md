@@ -12,6 +12,7 @@ lah-beh-LEE-toh · `/la.beˈli.to/` · a Spanish diminutive of "label"
 [![Latest release](https://img.shields.io/github/v/release/chiva/ha-labelito)](https://github.com/chiva/ha-labelito/releases)
 [![Hassfest](https://github.com/chiva/ha-labelito/actions/workflows/hassfest.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/hassfest.yml)
 [![HACS](https://github.com/chiva/ha-labelito/actions/workflows/hacs.yml/badge.svg)](https://github.com/chiva/ha-labelito/actions/workflows/hacs.yml)
+[![codecov](https://codecov.io/gh/chiva/ha-labelito/branch/main/graph/badge.svg)](https://codecov.io/gh/chiva/ha-labelito)
 [![License: MIT](https://img.shields.io/github/license/chiva/ha-labelito)](LICENSE)
 
 </div>

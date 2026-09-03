@@ -6,3 +6,9 @@ venv/
 .ruff_cache/
 .pytest_cache/
 .DS_Store
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
