@@ -1,0 +1,36 @@
+# Codecov configuration. Without this file Codecov applies its defaults, and its default `project`
+# status has no tolerance at all: on labelito that turned a dependency-bump PR red with
+# "94.84% (-0.16%)". A required check that goes red on rounding noise teaches everyone to ignore
+# it, so the thresholds here are set deliberately. Mirrors labelito's file, with one difference
+# noted below.
+#
+# Coverage is already gated locally: [tool.coverage.report] in pyproject.toml sets fail_under = 85
+# and CI runs `pytest --cov`, so a real collapse turns the Pytest job red without involving a third
+# party. What that floor CANNOT see is the diff — measured coverage is 92.70% on main today
+# (93.66% once the diagnostics tests land), so a PR can add a hundred untested lines and still sit
+# far above 85. That is the gap `patch` closes, and it is the reason this repo uploads at all.
+coverage:
+  status:
+    # Overall coverage. Blocks on a genuine regression, tolerates noise. 1% against a ~93%
+    # baseline is roughly 12 statements of the 1151 measured.
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    # Coverage of the lines this PR changed. This is the check with something to say that
+    # fail_under does not: new code arrives tested, whatever the aggregate looks like.
+    patch:
+      default:
+        target: 80%
+        threshold: 0%
+
+# Unlike labelito, this repo runs a single unflagged upload — pytest-homeassistant-custom-component
+# is welded to one Home Assistant core version, so there is no interpreter matrix here and no
+# second report to wait for.
+codecov:
+  notify:
+    after_n_builds: 1
+
+comment:
+  after_n_builds: 1
+  require_changes: true
