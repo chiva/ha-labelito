@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.labelito.api import (
     LabelitoAuthError,
@@ -116,3 +117,29 @@ async def test_cached_template_count_falls_back_to_health(
     assert coord.cached_template_count == MOCK_HEALTH["template_count"]
     await coord.async_get_templates()
     assert coord.cached_template_count == len(MOCK_TEMPLATES)
+
+
+async def test_template_names_skips_entries_without_a_usable_name(
+    hass: HomeAssistant, mock_labelito: AiohttpClientMocker, mock_config_entry: MockConfigEntry
+) -> None:
+    """The voice handler reads this to speak the catalog back after a miss.
+
+    Vetting names in the matcher while this still assumed the shape would only move the failure: a
+    malformed entry would correctly stop matching, and then crash while composing the message that
+    explains why.
+    """
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = mock_config_entry.runtime_data
+
+    assert coordinator.template_names(
+        [
+            {"name": "nevera"},
+            {"name": "congelador"},
+            {"description": "no name"},
+            {"name": 42},
+            {"name": ""},
+            "not-a-mapping",
+        ]
+    ) == ["congelador", "nevera"]
