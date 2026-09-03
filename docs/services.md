@@ -112,3 +112,65 @@ you actually printed stays reprintable no matter how many dry runs happen in bet
 because labelito will happily reprint a dry-run job as a real label if asked — its `/reprint`
 refuses only a *failed* job — so tracking one here would turn this service into a physical copy of
 something deliberately not printed.
+
+## `labelito.write_voice_sentences`
+
+Writes the Home Assistant custom-sentence files for voice printing, generated from the templates
+labelito currently serves, and reloads the conversation integration so they take effect without a
+restart. This is the setup step for voice — see [voice-assist.md](voice-assist.md) — and the way to
+refresh the list by hand after adding a template, though the refresh normally happens on its own.
+
+| field | required | notes |
+|---|---|---|
+| `language` | no | Which languages to write, from those a grammar exists for (`en`, `es`). Defaults to all of them. |
+| `config_entry_id` | no | Which configured labelito service to read the catalog from. Only needed with more than one. |
+
+It writes two files per language under `<config>/custom_sentences/<language>/`:
+`labelito.yaml` **only if it is missing** (yours to edit from then on) and
+`labelito-templates.yaml` **whenever its content changes** (generated; delete it to opt out). The
+template catalog is re-fetched rather than read from cache, because this service is called right
+after adding or renaming a template — exactly when the cached catalog is the wrong answer.
+
+The optional response reports what happened:
+
+```yaml
+written: ["custom_sentences/es/labelito-templates.yaml"]
+unchanged: ["custom_sentences/es/labelito.yaml"]
+spoken_forms: 31        # template names plus aliases that made it into the list
+ambiguous: ["pantry 1"] # more than one template is said this way, so none of them matched by it
+unspeakable: []         # a spoken form voice cannot use at all
+conflicts: []           # a file with a generated file's name that this integration did not write
+reloaded: true          # false when nothing changed, when no conversation integration is
+                        # loaded, or when the reload itself failed (the files are written either
+                        # way; they then take effect after a restart)
+```
+
+`ambiguous` and `unspeakable` are worth reading, and they do not all degrade the same way:
+
+| reported as | in the closed list | reachable by voice |
+|---|---|---|
+| `ambiguous` — two templates claim the form | no | no; the handler refuses a contested form too |
+| `unspeakable` — the form carries sentence-grammar syntax (`weird (name)`) | no | **yes**, through the fuzzy fallback |
+| `unspeakable` — nothing survives normalization (`...`, `-`) | no | **no**, not at all until renamed |
+
+Only the middle row still works, which is why "it falls back to fuzzy matching" is not a blanket
+answer. A name that normalizes to nothing is excluded from the matcher as well, deliberately: an
+empty key there was matched by a speech-to-text slot that was itself only punctuation, and printed
+that template. Renaming is the only fix for any of the three.
+
+`unspeakable` reports the **spoken form** rather than the template name, because for an alias the
+name is fine and the alias is what has to change.
+
+`conflicts` matters more than its length suggests. This integration rewrites
+`labelito-templates.yaml` only when the file carries the header it writes, so a hand-written
+grammar that happens to share the name is never replaced. But because that file's existence
+doubles as the opt-in record, one sitting there means the automatic refresh will keep finding a
+file it may not touch and doing nothing.
+
+Rename or delete yours to hand the name over — **and then call this service again**. The automatic
+refresh only ever *updates* a generated file that already exists; it will not create the missing
+one for you, so until you run the service once more there is still no generated grammar.
+
+The generated file is replaced atomically — staged in the same directory and moved into place — so
+a failed write leaves the previous one intact rather than a truncated grammar Home Assistant would
+try to load.

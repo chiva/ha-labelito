@@ -1,14 +1,59 @@
 # Voice (Assist)
 
 HACS installs the integration only — Home Assistant loads custom sentences exclusively from your
-config folder ([official docs][custom-sentences]), so the sentence files have to be added by hand
-once. Download the [`custom_sentences/`](../custom_sentences) folder from this repository and drop
-it into your `<config>` directory so the files land at:
+config folder ([official docs][custom-sentences]), so the sentence files have to get there once.
+
+## Setup
+
+Call the **`labelito.write_voice_sentences`** service (Developer tools → Actions). It writes both
+files, tailored to the templates you actually have, and reloads the conversation integration so
+they take effect without a restart:
 
 ```text
-<config>/custom_sentences/en/labelito.yaml
-<config>/custom_sentences/es/labelito.yaml
+<config>/custom_sentences/<lang>/labelito.yaml             once, then yours to edit
+<config>/custom_sentences/<lang>/labelito-templates.yaml   generated, kept in step with the catalog
 ```
+
+Nothing is written until you call it — installing a printer does not put files in your config
+directory. After that first call the generated file is refreshed automatically whenever the
+template catalog changes, so a template you add is matched by name without touching anything.
+**Deleting `labelito-templates.yaml` is a complete opt-out**; voice printing keeps working through
+the other file.
+
+That file's existence *is* the record of the opt-in, which is why it is written even when the
+catalog is empty — an empty list is a valid grammar whose sentences simply never match, and
+skipping it would mean a service call made while labelito served nothing left the refresh
+believing you had never opted in.
+
+**Only a file carrying the generated header is ever rewritten.** If you already have a
+hand-written `labelito-templates.yaml`, it is left alone and reported under `conflicts` instead —
+the automatic refresh must not be able to destroy a grammar you wrote, least of all at startup
+with no service call involved. The cost of keeping yours is that the opt-in can never be recorded
+while it is there, so rename it if you want generated sentences too — and then run
+`labelito.write_voice_sentences` again, because the automatic refresh only updates a generated
+file that already exists and will not create the one you just moved out of the way.
+
+Every list these files define is prefixed with `labelito_` (`labelito_template_name`,
+`labelito_template`, `labelito_text`), and hassil's `{list:slot}` form maps each back onto the
+plain slot the intent expects. Home Assistant merges every custom-sentence file for a language
+into one dictionary, so `lists` is a shared namespace: with a generic name, another grammar's
+values merge into ours. Measured — a second file defining its own `template_name` made *"imprime
+una etiqueta de tele"* resolve to `television`, a value with nothing to do with labels.
+
+Nothing about this is allowed to stop the printer working. The refresh runs at setup and off the
+status poll, and a failure in it — an unwritable config directory, a conversation integration that
+will not reload, a template catalog whose shape is not what this integration expects — is logged
+and dropped. A service call you made yourself still reports its errors to you.
+
+The service optionally returns a response naming what it wrote, how many spoken forms the list
+holds, and any name it had to leave out (see [Two grammars](#two-grammars-and-why-both)).
+
+### Doing it by hand instead
+
+If you would rather not have the integration write to your config directory, download the
+[`custom_sentences/`](../custom_sentences) folder from this repository into `<config>` so the files
+land at `<config>/custom_sentences/{en,es}/labelito.yaml`. That is the same wildcard grammar the
+service writes — you just do not get the exact-match list.
 
 On **Core** or **Container** installs, run this from the folder where you downloaded the repo's
 `custom_sentences/` directory, setting `CONFIG` to your Home Assistant config directory:
@@ -30,9 +75,31 @@ Reload Home Assistant (or restart), then say things like:
 - "make a freezer-dated label that says lasagna"
 - "imprime una etiqueta de pantry para sopa de tomate"
 
-The spoken template name is fuzzy-matched against the live catalog, the free-form text fills the
+The spoken template name is matched against the live catalog, the free-form text fills the
 template's first required field, and the reply — and the printed label's language — follow the
 language you spoke in.
+
+## Aliases: the other way you say a name
+
+A template can declare alternative **spoken** names, in its own YAML:
+
+```yaml
+name: meal-prep
+aliases: [comida preparada, batch cooking]
+```
+
+Two reasons that helps. A saved name is not always a spoken one — `meal-prep` is never said with
+the hyphen (the integration derives "meal prep" on its own, so that alias would be redundant) — and
+the same thing often has another word: a Spanish household says *congelado* about as often as
+*congelador*.
+
+Aliases are never a lookup key: printing is always by `name`, and the reply names the canonical
+template. A template's own name always outranks another template's alias, so an alias can never
+resolve in place of a real name. A spoken form that **two** templates claim resolves to neither —
+there is no way to tell which was meant — and `write_voice_sentences` reports it, since the only
+fix is renaming one of them. See
+[Aliases (spoken names)](https://github.com/chiva/labelito/blob/main/docs/template-format.md#aliases-spoken-names)
+in labelito's template reference.
 
 ## Two ways to print by voice
 
@@ -126,19 +193,85 @@ tape.
   "prefer handling commands locally" so exact-sentence triggers and the built-in intent fire before
   the LLM takes over.
 - **Auto-numbering (`{{seq}}`) is not available by voice** — use the service or dashboard.
-- **Spanish free-text** relies on handler-side recovery (see below); English does not.
-- **Template names should not contain connector words** (*para* / *for* / *que diga* / *that says*)
-  if you want free text with them. An exactly-spoken name always resolves (even one with a
-  connector), but recovery treats the first connector as the template/text boundary — so a template
-  named `regalo-para-navidad` used *with* dictated text can't be told apart from *"regalo para
-  &lt;text&gt;"* (template `regalo` + text).
+- **A mis-heard name is resolved by similarity, not exactly.** "cogelador" reaches `congelador`
+  through the fuzzy matcher, which is a guess — a good one, but a template whose name is one letter
+  from another's can be mistaken. Exact matching applies only to names in the generated list.
+- **Spanish free-text falls back to handler-side recovery** (see below) for any name the generated
+  list does not cover — a mis-heard one, or one added since the last refresh. English never needed
+  the recovery.
+- **A template name containing a connector word** (*para* / *for* / *que diga* / *that says*)
+  loses its tail to the dictated text *without* the generated list. Spoken alone it is fine — the
+  handler matches a full name exactly before it tries splitting — but *"haz una etiqueta de regalo
+  para navidad para juan"* arrives as one slot that matches no name exactly, so recovery splits at
+  the **first** connector and resolves `regalo` with the text "navidad para juan". With the list
+  both parse correctly: the two candidate parses bind one wildcard each and match the same
+  literals, so hassil's third criterion decides — less text captured by the wildcard — which is
+  `regalo-para-navidad` plus "juan". `labelito.write_voice_sentences` is the fix for such a name.
 
-## How the text is extracted (and why Spanish needs help)
+## Two grammars, and why both
 
-`template` and `text` are both **wildcard** lists, and Home Assistant's default agent resolves
-sentences with [`recognize_best`](https://github.com/home-assistant/hassil). When a sentence ends
-in a trailing `{template}` wildcard with no literal after it, `recognize_best` prefers to fold the
-*entire* utterance into `template`:
+Two sentence files are in play, and each is wrong on its own:
+
+| | `labelito.yaml` | `labelito-templates.yaml` |
+|---|---|---|
+| the `template` slot is | a **wildcard** — anything | a **closed list** of the names you have |
+| written | once, if missing; then yours | regenerated when the catalog changes |
+| gets right | a name nobody enumerated: one added a minute ago, or one the speech-to-text engine mangled | the text boundary, multi-word names, punctuation and casing, connector words in a name |
+| gets wrong | folds the whole Spanish utterance into one slot (below) | stale the moment a template is added; can never cover a mis-heard name |
+
+Home Assistant's default agent resolves sentences with
+[`recognize_best`](https://github.com/home-assistant/hassil), which scores every parse and prefers,
+in order, **fewer wildcards** and then **more literal text matched**. Both preferences point the
+same way here, so no tie-breaking trickery is needed: for *"imprime una etiqueta de congelador para
+lasaña"* the closed-list parse binds one wildcard (`text`) and matches one literal more (*para*)
+than the wildcard parse, so it wins and `text` comes out clean. An utterance the list cannot match
+has no closed-list parse at all, falls to the wildcard sentences, and is recovered by the handler.
+**A stale or missing list therefore degrades, never breaks** — which is what makes regenerating it
+safe to do automatically.
+
+Two names never make it into the list, and both simply fall back to the wildcard:
+
+* a spoken form **more than one template claims** — `pantry-1` and `pantry_1` are both said "pantry
+  one" — because printing the wrong one is worse than saying "I don't know that template" and
+  reading out the real list;
+* a spoken form carrying **sentence-grammar syntax** (`(`, `)`, `[`, `]`, `{`, `}`, `<`, `>`,
+  `|`, `;`, `\`), which hassil would parse instead of match — and for `{...}` would refuse to
+  recognize *anything* in that language with. Both a name and an alias can carry these: labelito
+  only constrains the names it saves itself, so a YAML file dropped into its templates directory
+  by hand can be named anything, and an alias arrives over HTTP from a service this integration
+  does not own.
+
+`write_voice_sentences` reports both in its response, because in both cases the fix is a rename and
+nothing else would tell you.
+
+Anything read from the catalog is treated as untrusted for the same reason. An `aliases` value
+that is not a list of strings contributes nothing: a bare string would otherwise register one
+spoken form per *character*, and a single letter is a substring of almost any utterance, so the
+fuzzy matcher would resolve it and print the wrong label.
+
+The generated file is replaced atomically — staged in the same directory, then moved into place —
+so a failed write leaves the previous grammar intact instead of a truncated one Home Assistant
+would try to load. A truncated closed-list file is the dangerous case, not an ignored one: it can
+still parse as a mapping whose sentences reference the list its cut-off tail defined.
+
+### Why the list ships in the same file as its sentences
+
+hassil raises `MissingListError` when a sentence references a list that is not defined — and it
+raises it while *recognizing*, which discards every result for that language. Putting the
+closed-list sentences in one file and the generated list in another would therefore take down all
+voice control for that language whenever the list was missing, wildcard fallback included. So each
+file defines exactly the lists its own sentences use and is a complete grammar on its own; either
+can be deleted without touching the other. `tests/test_voice_sentences.py` pins both halves of
+that, including the `MissingListError` behaviour itself — so if a future hassil stops discarding
+everything, the split stops being necessary and we find out from a failing test rather than
+carrying the complexity on a stale assumption.
+
+## How the text is extracted without the list (and why Spanish needs help)
+
+With `template` and `text` both **wildcard** lists — the only grammar available before the list is
+generated, and the one every unmatched utterance falls back to — a sentence ending in a trailing
+`{template}` wildcard with no literal after it makes `recognize_best` fold the *entire* utterance
+into `template`:
 
 - English is safe because the required word **"label" sits after `{template}`**
   (`print [a] {template} label [for] {text}`), so the wildcard can only capture the template name
@@ -183,7 +316,9 @@ also means a punctuated connector (*"que diga,"*) still marks the template/text 
 of silently discarding the dictated text.
 
 `tests/test_intents.py` locks this down, including a `recognize_best` regression test over the
-shipped YAML so the behavior can be re-validated if the sentence files change.
+shipped YAML so the behavior can be re-validated if the sentence files change. Those tests run
+against the real hassil (pinned in `requirements_test.txt` — it is not a dependency of the Home
+Assistant wheel, so without the pin they would silently skip).
 
 ## Reference
 

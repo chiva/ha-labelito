@@ -1,20 +1,27 @@
-# Descarga la carpeta custom_sentences/ del repositorio en <config>/ para que este archivo quede en
-# <config>/custom_sentences/es/labelito.yaml (las integraciones no pueden incluir frases
-# personalizadas; Home Assistant solo las carga desde config). Ver docs/voice-assist.md.
-language: "es"
+# La gramática de voz con comodines. Dos formas de instalarla:
+#
+#   * llama al servicio labelito.write_voice_sentences — escribe este archivo si falta, más un
+#     labelito-templates.yaml generado que reconoce tus nombres de plantilla EXACTAMENTE en lugar
+#     de adivinarlos desde el comodín de abajo;
+#   * o copia este archivo a mano a <config>/custom_sentences/es/labelito.yaml (las integraciones
+#     no pueden incluir frases personalizadas; Home Assistant solo las carga desde config).
+#
+# En cualquier caso este archivo es tuyo para editarlo: el servicio nunca lo sobrescribe. Ver
+# docs/voice-assist.md.
+language: es
 intents:
   LabelitoPrint:
     data:
-      - sentences:
-          - "imprime una etiqueta [de] {template} para {text}"
-          - "imprime una etiqueta [de] {template} que diga {text}"
-          - "haz una etiqueta [de] {template} para {text}"
-          - "haz una etiqueta [de] {template} que diga {text}"
-      - sentences:
-          - "imprime una etiqueta [de] {template}"
-          - "haz una etiqueta [de] {template}"
+    - sentences:
+      - imprime una etiqueta [de] {labelito_template:template} para {labelito_text:text}
+      - imprime una etiqueta [de] {labelito_template:template} que diga {labelito_text:text}
+      - haz una etiqueta [de] {labelito_template:template} para {labelito_text:text}
+      - haz una etiqueta [de] {labelito_template:template} que diga {labelito_text:text}
+    - sentences:
+      - imprime una etiqueta [de] {labelito_template:template}
+      - haz una etiqueta [de] {labelito_template:template}
 lists:
-  template:
+  labelito_template:
     wildcard: true
-  text:
+  labelito_text:
     wildcard: true

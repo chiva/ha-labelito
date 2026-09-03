@@ -26,6 +26,7 @@ from .const import (
 from .coordinator import LabelitoCoordinator
 from .intents import async_setup_intents
 from .services import async_setup_services
+from .voice_sentences import async_refresh_voice_sentences, async_setup_voice_sentences_service
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
 
@@ -68,6 +69,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """
     async_setup_services(hass)
     async_setup_intents(hass)
+    async_setup_voice_sentences_service(hass)
     return True
 
 
@@ -108,6 +110,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: LabelitoConfigEntry) -> 
         raise ConfigEntryAuthFailed from err
     except LabelitoConnectionError as err:
         raise ConfigEntryNotReady(f"Could not fetch templates: {err}") from err
+
+    # Keep an already-opted-in voice grammar current across a restart, and across templates added
+    # while Home Assistant was down. Writes nothing unless labelito.write_voice_sentences has been
+    # run at least once — setting up a printer must not put files in the config directory on its
+    # own — and never raises, so optional voice work cannot stop a printer from loading.
+    await async_refresh_voice_sentences(coordinator)
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

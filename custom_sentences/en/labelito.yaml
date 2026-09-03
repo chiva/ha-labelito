@@ -1,20 +1,27 @@
-# Download the repo's custom_sentences/ folder into <config>/ so this lands at
-# <config>/custom_sentences/en/labelito.yaml (integrations cannot ship custom sentences;
-# Home Assistant only loads them from config). See docs/voice-assist.md.
-language: "en"
+# The wildcard voice grammar. Two ways to install it:
+#
+#   * call the labelito.write_voice_sentences service — it writes this file if missing, plus a
+#     generated labelito-templates.yaml that matches your template names EXACTLY instead of
+#     guessing them out of the wildcard below;
+#   * or copy this file by hand to <config>/custom_sentences/en/labelito.yaml (integrations cannot
+#     ship custom sentences; Home Assistant only loads them from config).
+#
+# Either way this file is yours to edit — the service never overwrites it. See
+# docs/voice-assist.md.
+language: en
 intents:
   LabelitoPrint:
     data:
-      - sentences:
-          - "print [a] {template} label [for] {text}"
-          - "print [a] {template} label [that says] {text}"
-          - "make [a] {template} label [for] {text}"
-          - "make [a] {template} label [that says] {text}"
-      - sentences:
-          - "print [a] {template} label"
-          - "make [a] {template} label"
+    - sentences:
+      - print [a] {labelito_template:template} label [for] {labelito_text:text}
+      - print [a] {labelito_template:template} label [that says] {labelito_text:text}
+      - make [a] {labelito_template:template} label [for] {labelito_text:text}
+      - make [a] {labelito_template:template} label [that says] {labelito_text:text}
+    - sentences:
+      - print [a] {labelito_template:template} label
+      - make [a] {labelito_template:template} label
 lists:
-  template:
+  labelito_template:
     wildcard: true
-  text:
+  labelito_text:
     wildcard: true

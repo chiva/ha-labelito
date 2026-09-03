@@ -180,3 +180,35 @@ reprint_last:
       selector:
         config_entry:
           integration: labelito
+write_voice_sentences:
+  name: Write voice sentences
+  description: >-
+    Generate the Home Assistant custom-sentence files for voice printing from the templates
+    labelito currently serves, so a spoken template name is matched exactly instead of being
+    guessed out of a wildcard. Creates the sentence files under custom_sentences/ if they are
+    missing (replacing the manual copy step), writes a closed list of every template name and
+    alias, and reloads the conversation integration so it takes effect without a restart. Once
+    run, the list is kept in step with the catalog automatically; delete
+    custom_sentences/<language>/labelito-templates.yaml to opt out. Optionally returns a response
+    listing what was written and any spoken name that had to be left out.
+  fields:
+    language:
+      name: Languages
+      description: >-
+        Which languages to write, from those a grammar exists for. Defaults to all of them, which
+        is what the repository ships.
+      example: '["es"]'
+      selector:
+        select:
+          multiple: true
+          options:
+            - en
+            - es
+    config_entry_id:
+      name: labelito instance
+      description: >-
+        Which configured labelito service to read the template catalog from. Only needed when more
+        than one is configured.
+      selector:
+        config_entry:
+          integration: labelito

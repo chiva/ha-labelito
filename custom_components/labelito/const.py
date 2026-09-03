@@ -70,6 +70,7 @@ JOB_STATUS_DRY_RUN: Final = "dry-run"
 
 SERVICE_PRINT: Final = "print"
 SERVICE_REPRINT_LAST: Final = "reprint_last"
+SERVICE_WRITE_VOICE_SENTENCES: Final = "write_voice_sentences"
 
 INTENT_PRINT: Final = "LabelitoPrint"
 
@@ -78,6 +79,9 @@ ATTR_TEMPLATE: Final = "template"
 # provided (labelito's PrintRequest enforces this too). Requires INLINE_TEMPLATES_ENABLED=true on
 # the server, else labelito returns 403.
 ATTR_TEMPLATE_INLINE: Final = "template_inline"
+# TemplateInfo.aliases: alternative SPOKEN names a template declares, for voice matching. Absent
+# on a labelito older than the release that added them, so every read must tolerate a missing key.
+ATTR_ALIASES: Final = "aliases"
 ATTR_FIELDS: Final = "fields"
 ATTR_COPIES: Final = "copies"
 ATTR_DRY_RUN: Final = "dry_run"
@@ -99,6 +103,14 @@ MAX_THRESHOLD: Final = 100
 
 # PrintRequest.template_inline length cap (labelito's MAX_TEMPLATE_YAML_CHARS).
 MAX_TEMPLATE_INLINE_CHARS: Final = 65536
+
+ATTR_WRITTEN: Final = "written"
+ATTR_UNCHANGED: Final = "unchanged"
+ATTR_SPOKEN_FORMS: Final = "spoken_forms"
+ATTR_AMBIGUOUS: Final = "ambiguous"
+ATTR_UNSPEAKABLE: Final = "unspeakable"
+ATTR_CONFLICTS: Final = "conflicts"
+ATTR_RELOADED: Final = "reloaded"
 
 ATTR_JOB_ID: Final = "job_id"
 ATTR_STATUS: Final = "status"

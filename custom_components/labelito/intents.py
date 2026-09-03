@@ -8,7 +8,8 @@ Requires the user to copy the shipped ``custom_sentences/`` files into
 from __future__ import annotations
 
 import difflib
-from typing import Any, ClassVar
+import logging
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
@@ -18,6 +19,7 @@ from homeassistant.helpers import intent
 
 from .api import LabelitoApiError
 from .const import (
+    ATTR_ALIASES,
     ATTR_COPIES,
     ATTR_DRY_RUN,
     ATTR_FIELDS,
@@ -27,8 +29,12 @@ from .const import (
     DEFAULT_VOICE_DRY_RUN,
     INTENT_PRINT,
 )
-from .coordinator import LabelitoCoordinator
 from .services import async_execute_print, resolve_coordinator
+
+if TYPE_CHECKING:
+    from .coordinator import LabelitoCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 # labelito's HTTP status for a request that omits a template's required fields (matches
 # services._raise_for_api_error). The intent handler translates it into the spoken needs_text reply.
@@ -107,8 +113,146 @@ def _normalize(name: str) -> str:
     return name.lower().replace("-", " ").replace("_", " ").strip(SENTENCE_PUNCTUATION + " ")
 
 
-def _index_by_normalized(templates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Index the catalog by normalized name, dropping any key more than one template claims.
+def _raw_name(template: Any) -> str | None:
+    """The entry's ``name`` if it is a non-empty string, else None — a pure shape check.
+
+    Same rule as :func:`_alias_strings`, for the same reason: the catalog is an HTTP response from
+    a service this integration does not own, so its shape is not ours to assume. Reading
+    ``template["name"]`` on a malformed entry raises KeyError (no key), AttributeError (a non-string
+    name reaching ``_normalize``) or TypeError (a list of plain strings instead of mappings) —
+    measured, all three.
+
+    The point is blast radius. Before this, ONE malformed entry raised out of the shared index and
+    broke every spoken match for the WHOLE catalog; now it costs only itself and its neighbours
+    still resolve.
+    """
+    if not isinstance(template, dict):
+        return None
+    name = template.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    return name
+
+
+def _template_name(template: Any) -> str | None:
+    """The entry's name if it can serve as a SPOKEN form, else None.
+
+    Beyond the shape check in :func:`_raw_name`, the name must survive normalization. A name made
+    only of characters :func:`_normalize` strips — ``"..."``, ``"   "``, ``"-"``, ``"¿?"`` — reduces
+    to the empty string, and an empty key is catastrophic in this index rather than merely useless:
+    :func:`_split_template_and_text` tests exact membership first, so a punctuation-only slot from
+    a speech-to-text engine matched it and printed that template; and the empty form reached the
+    generated closed list as ``in: ""``. Aliases were already guarded against exactly this
+    (:func:`_group_spoken_forms`); names were not.
+
+    labelito's own save charset would reject such a name, but it does not constrain the ``name:``
+    key of a YAML file placed in its templates directory by hand, so this is reachable. Excluding
+    it costs nothing real: a name nobody can pronounce is not a name voice can use, and
+    :func:`unsayable_template_names` reports it so the fix (a rename) is discoverable.
+    """
+    name = _raw_name(template)
+    if name is None or not _normalize(name):
+        return None
+    return name
+
+
+def unsayable_template_names(templates: list[dict[str, Any]]) -> list[str]:
+    """Names that exist but cannot be a spoken form, because normalization leaves nothing.
+
+    Reported by the ``write_voice_sentences`` service alongside the forms hassil could not take
+    literally: both mean "this template exists and voice cannot reach it", and both are fixed the
+    same way.
+    """
+    return sorted(
+        {
+            name
+            for template in templates
+            if (name := _raw_name(template)) is not None and not _normalize(name)
+        }
+    )
+
+
+def _alias_strings(template: dict[str, Any]) -> list[str]:
+    """The declared aliases of ``template``, ignoring anything that is not a list of strings.
+
+    The catalog arrives as an HTTP response, so its shape is not ours to assume — and one
+    malformed shape is actively dangerous rather than merely useless. A **string** where a list
+    belongs iterates one "alias" per CHARACTER: ``aliases: "meal-prep"`` would register the spoken
+    forms ``m``, ``e``, ``a``… and a one-letter form is a substring of almost any utterance, so
+    :func:`_fuzzy_match_template`'s containment rule resolves it and a wrong physical label comes
+    out of the printer. Measured, not theorised: with ``aliases: "not-a-list"``, the utterances
+    "nada", "otro" and "lista" all resolved to that template.
+
+    labelito validates aliases into a list of strings before serving them, but this integration
+    talks to a service it does not own and cannot assume a version, a proxy, or a hand-rolled
+    stand-in got that right.
+
+    Logged at debug rather than warning on purpose: this runs on every spoken utterance (twice),
+    so a warning would be a per-command log spam for a condition the user cannot act on — it is a
+    bug in whatever served the catalog. The visible symptom is that the alias simply does nothing,
+    and ``write_voice_sentences`` reports the spoken-form count.
+    """
+    aliases = template.get(ATTR_ALIASES)
+    if aliases is None:
+        return []
+    if not isinstance(aliases, list):
+        _LOGGER.debug(
+            "Ignoring 'aliases' for template %r: expected a list, got %s",
+            template.get("name"),
+            type(aliases).__name__,
+        )
+        return []
+    strings: list[str] = []
+    for alias in aliases:
+        if not isinstance(alias, str):
+            _LOGGER.debug(
+                "Ignoring alias %r for template %r: expected a string, got %s",
+                alias,
+                template.get("name"),
+                type(alias).__name__,
+            )
+            continue
+        strings.append(alias)
+    return strings
+
+
+def _group_spoken_forms(
+    templates: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, dict[str, Any]]], dict[str, dict[str, dict[str, Any]]]]:
+    """Group the catalog by normalized name and by normalized alias, keeping every claimant.
+
+    Two separate groupings, because the two tiers do not rank equally — see
+    :func:`spoken_name_index`. Each maps a spoken form to the DISTINCT templates that claim it, so
+    a catalog that somehow lists one template twice is not mistaken for a collision (the registry
+    keys by name, so that should not arise) and two aliases on one template that normalize alike
+    count once.
+    """
+    by_name: dict[str, dict[str, dict[str, Any]]] = {}
+    for template in templates:
+        name = _template_name(template)
+        if name is None:
+            continue
+        by_name.setdefault(_normalize(name), {})[name] = template
+
+    by_alias: dict[str, dict[str, dict[str, Any]]] = {}
+    for template in templates:
+        name = _template_name(template)
+        if name is None:
+            continue
+        for alias in _alias_strings(template):
+            key = _normalize(alias)
+            # An alias that normalizes to nothing (punctuation only) would match every utterance
+            # via the substring rule; one that collides with ANY spoken name — including a name
+            # form that is itself ambiguous and therefore dropped below — must not resolve either,
+            # or adding an alias to one template could hijack another template's own name.
+            if not key or key in by_name:
+                continue
+            by_alias.setdefault(key, {})[name] = template
+    return by_name, by_alias
+
+
+def spoken_name_index(templates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Map every spoken form of a template — its name and its aliases — to that template.
 
     :func:`_normalize` is lossy — it folds ``-``/``_`` to spaces and strips sentence punctuation —
     so distinct names can share a key: ``pantry-1`` and ``pantry_1`` both become "pantry 1", and
@@ -118,16 +262,72 @@ def _index_by_normalized(templates: list[dict[str, Any]]) -> dict[str, dict[str,
 
     An ambiguous key resolves to nothing instead. The caller then speaks the unknown-template
     prompt with the real names, which is the only answer that cannot produce the wrong label —
-    there is genuinely no way to tell which of the two was meant. Ambiguous names are also kept out
+    there is genuinely no way to tell which of the two was meant. Ambiguous forms are also kept out
     of the substring and fuzzy passes, for the same reason.
 
-    Grouping is by DISTINCT raw name, so a catalog that somehow lists one template twice is not
-    mistaken for a collision (the registry keys by name, so this should not arise).
+    **Names outrank aliases.** A template's ``aliases`` (labelito's optional per-template list of
+    alternative spoken names, for the hyphen nobody says aloud and the other word for the same
+    thing) are added only for forms no name claims. Without that precedence, an alias on one
+    template could resolve — and print — in place of another template's actual name, which is the
+    one thing a matcher must never do. Within the alias tier the same ambiguity rule applies: a
+    form two templates alias resolves to neither.
+
+    Aliases are resolved here, in the shared index, rather than only in the generated closed-list
+    grammar (:mod:`.voice_sentences`) — so an alias still works when that file is stale, absent, or
+    was never generated, and the two paths can never disagree about what a name means.
     """
-    grouped: dict[str, dict[str, dict[str, Any]]] = {}
-    for template in templates:
-        grouped.setdefault(_normalize(template["name"]), {})[template["name"]] = template
-    return {key: next(iter(by_raw.values())) for key, by_raw in grouped.items() if len(by_raw) == 1}
+    by_name, by_alias = _group_spoken_forms(templates)
+    index = {
+        key: next(iter(claimants.values()))
+        for key, claimants in by_name.items()
+        if len(claimants) == 1
+    }
+    index.update(
+        {
+            key: next(iter(claimants.values()))
+            for key, claimants in by_alias.items()
+            if len(claimants) == 1
+        }
+    )
+    return index
+
+
+def resolvable_spoken_forms(templates: list[dict[str, Any]]) -> dict[str, str]:
+    """Map each spoken form to the canonical template name, for the forms this handler can resolve.
+
+    The vocabulary :mod:`.voice_sentences` compiles into a closed grammar. Filtered to forms that
+    ROUND-TRIP: a grammar match hands the handler the canonical name as if it had been spoken, and
+    :func:`spoken_name_index` resolves it again — so a form whose own name no longer resolves would
+    be matched by the grammar and then reported as an unknown template.
+
+    That is reachable through an alias. Templates named ``pantry-1`` and ``pantry_1`` make the name
+    form "pantry 1" ambiguous, so it is dropped; an alias on one of them stays unique, and emitting
+    it would hand back a name this index has deliberately stopped resolving. Deciding that here
+    keeps every rule about what a spoken name means in one module, and leaves the generator with
+    only its own concerns (grammar syntax, YAML, files).
+    """
+    index = spoken_name_index(templates)
+    return {
+        spoken: str(template["name"])
+        for spoken, template in index.items()
+        if index.get(_normalize(str(template["name"]))) is template
+    }
+
+
+def ambiguous_spoken_forms(templates: list[dict[str, Any]]) -> list[str]:
+    """The spoken forms :func:`spoken_name_index` dropped because more than one template claims them.
+
+    Reported by the ``write_voice_sentences`` service: a dropped form is silently unusable by
+    voice, and the only fix is renaming a template or an alias — which the user can only do if
+    something tells them which form is contested.
+    """
+    by_name, by_alias = _group_spoken_forms(templates)
+    return sorted(
+        key
+        for group in (by_name, by_alias)
+        for key, claimants in group.items()
+        if len(claimants) > 1
+    )
 
 
 def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -139,7 +339,7 @@ def _fuzzy_match_template(spoken: str, templates: list[dict[str, Any]]) -> dict[
     neighbour like ``grift``. The longest overlapping name wins, so an overlapping catalog (e.g.
     freezer / freezer-dated) resolves to the more specific template regardless of catalog order.
     """
-    by_normalized = _index_by_normalized(templates)
+    by_normalized = spoken_name_index(templates)
     wanted = _normalize(spoken)
     if not wanted:
         # Nothing survived normalization — a punctuation-only slot ("." from an ASR that heard no
@@ -217,7 +417,7 @@ def _split_template_and_text(
     5. **No connector anywhere** — the whole utterance is a template name, ASR noise included, so
        the substring rule is the intended rescue: "freezer dated uno dos tres" → ``freezer-dated``.
     """
-    by_normalized = _index_by_normalized(templates)
+    by_normalized = spoken_name_index(templates)
     if _normalize(spoken) in by_normalized:
         return by_normalized[_normalize(spoken)], None  # case 1
 
