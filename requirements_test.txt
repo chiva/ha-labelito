@@ -1,7 +1,7 @@
 # pytest-homeassistant-custom-component is welded to one Home Assistant core version — this pin
 # pulls homeassistant==2026.9.0b4 transitively. Bump both together (the HAcc release notes name the
 # HA version each release targets).
-pytest-homeassistant-custom-component==0.13.361
+pytest-homeassistant-custom-component==0.13.362
 # hassil is what Home Assistant's conversation integration matches sentences with, and it is NOT a
 # dependency of the core wheel — it is installed at runtime from that integration's manifest. Some
 # tests feed the shipped custom_sentences/ YAML through the real recognize_best to prove the voice
