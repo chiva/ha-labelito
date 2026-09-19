@@ -9,7 +9,7 @@ pytest-homeassistant-custom-component==0.13.361
 # are importorskip-guarded, so without this line they silently skip and the load-bearing claims go
 # unchecked. Pinned to the version homeassistant/components/conversation/manifest.json requires for
 # the core version above — bump it with the HAcc pin.
-hassil==3.12.0
+hassil==3.12.1
 pytest-cov>=5.0.0
 # Pinned exact: ruff's py314 formatter regression (astral-sh/ruff#23090, #25901) rewrites
 # `except (A, B):` to the unparenthesized form. Freeze the version so a future ruff that
