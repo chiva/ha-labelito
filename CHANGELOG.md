@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/chiva/ha-labelito/compare/v1.3.0...v1.3.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **services:** name the reason labelito rejects an inline template ([#50](https://github.com/chiva/ha-labelito/issues/50)) ([5790881](https://github.com/chiva/ha-labelito/commit/57908812327748a81c3849dd358988c004c035e9))
+
 ## [1.3.0](https://github.com/chiva/ha-labelito/compare/v1.2.0...v1.3.0) (2026-09-03)
 
 
