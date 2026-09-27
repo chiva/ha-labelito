@@ -186,6 +186,9 @@ async def test_options_flow_updates_scan_interval(
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_SCAN_INTERVAL: 120}
     )
+    # Saving options reloads the entry in a background task; let it finish so its new
+    # coordinator does not schedule a refresh after teardown's STOP (a lingering timer).
+    await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options[CONF_SCAN_INTERVAL] == 120
 
@@ -217,6 +220,9 @@ async def test_options_flow_sets_voice_dry_run_without_pinning_usb_interval(
             CONF_VOICE_DRY_RUN: True,
         },
     )
+    # Saving options reloads the entry in a background task; let it finish so its new
+    # coordinator does not schedule a refresh after teardown's STOP (a lingering timer).
+    await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options[CONF_VOICE_DRY_RUN] is True
@@ -241,6 +247,9 @@ async def test_options_flow_keeps_an_explicit_interval_that_matches_the_default(
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_SCAN_INTERVAL: 30, CONF_VOICE_DRY_RUN: False}
     )
+    # Saving options reloads the entry in a background task; let it finish so its new
+    # coordinator does not schedule a refresh after teardown's STOP (a lingering timer).
+    await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options[CONF_SCAN_INTERVAL] == 30
@@ -555,6 +564,9 @@ async def test_options_flow_preserves_options_outside_the_form(
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_SCAN_INTERVAL: 45, CONF_VOICE_DRY_RUN: True}
     )
+    # Saving options reloads the entry in a background task; let it finish so its new
+    # coordinator does not schedule a refresh after teardown's STOP (a lingering timer).
+    await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options["future_option"] == "keep me"
