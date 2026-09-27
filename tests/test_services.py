@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -210,6 +211,29 @@ async def test_execute_print_inline_404_omits_template_hint(
         )
     assert "Available templates" not in str(exc.value)
     assert "Unknown asset in inline body" in str(exc.value)
+    assert client.templates.await_count == 0
+
+
+async def test_execute_print_invalid_inline_422_names_the_loader_reason(
+    coordinator: LabelitoCoordinator, client: AsyncMock
+) -> None:
+    # labelito 1.0.0 rejects a quarter turn on continuous tape without `length`. The reason lives
+    # in detail["error"]; surfacing only detail["msg"] would leave the caller guessing what to fix.
+    reason = "<inline>: rotate 90 on continuous label '62' requires 'length' (mm)"
+    client.print_label.side_effect = LabelitoApiError(
+        422, {"msg": "Invalid template YAML", "error": reason}
+    )
+    with pytest.raises(ServiceValidationError) as exc:
+        await async_execute_print(
+            coordinator,
+            {
+                "template_inline": 'label: "62"\nrotate: 90\n',
+                "fields": {},
+                "copies": 1,
+                "dry_run": False,
+            },
+        )
+    assert str(exc.value) == f"Invalid template YAML: {reason}"
     assert client.templates.await_count == 0
 
 
@@ -488,6 +512,19 @@ def test_speakable_detail_media_mismatch() -> None:
     assert _speakable_detail(detail) == (
         "The loaded roll is 62mm continuous but the template needs 29x90mm die-cut"
     )
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ({"msg": "Invalid template YAML", "error": "bad font"}, "Invalid template YAML: bad font"),
+        ({"msg": "Invalid template YAML", "error": ""}, "Invalid template YAML"),
+        ({"msg": "Invalid template YAML", "error": {"nested": 1}}, "Invalid template YAML"),
+    ],
+    ids=["reason-appended", "empty-reason-dropped", "non-string-reason-dropped"],
+)
+def test_speakable_detail_invalid_template_error(detail: dict[str, Any], expected: str) -> None:
+    assert _speakable_detail(detail) == expected
 
 
 def test_speakable_detail_none_is_not_literal_none() -> None:

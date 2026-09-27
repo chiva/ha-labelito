@@ -157,7 +157,8 @@ def _speakable_detail(detail: str | dict[str, Any] | list[Any] | None) -> str:
 
     Mirrors labelito's real 409/422/503 shapes: a media mismatch carries
     ``media_loaded``/``media_required``, a fault carries ``errors``, a missing-fields 422 carries
-    ``missing_required``, and simple errors are plain strings.
+    ``missing_required``, an inline template that fails validation carries the loader's reason in
+    ``error``, and simple errors are plain strings.
     """
     if detail is None:
         # An error body with no detail (or a literal null) must not surface as the word "None".
@@ -176,6 +177,9 @@ def _speakable_detail(detail: str | dict[str, Any] | list[Any] | None) -> str:
         missing = detail.get("missing_required")
         if isinstance(missing, list) and missing:
             return f"{msg}: {', '.join(str(m) for m in missing)}"
+        error = detail.get("error")
+        if isinstance(error, str) and error:
+            return f"{msg}: {error}"
         return msg
     return str(detail)
 
