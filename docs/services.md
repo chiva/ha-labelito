@@ -13,13 +13,16 @@ data:
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `template` | yes | labelito template name, validated at call time against the live catalog. |
+| `template` | one of | labelito template name, validated at call time against the live catalog. |
+| `template_inline` | one of | A full template YAML body instead of a stored name; see [inline templates](#inline-templates). |
 | `fields` | no | Mapping of template field name → value. |
 | `copies` | no | 1-10, default 1. |
 | `dry_run` | no | Render and validate without printing. |
 | `language` | no | Language tag for translated label chrome and dates. |
 | `cut` | no | Cut after printing (server default: true). |
 | `red` / `dither` | no | Two-color printing / Floyd-Steinberg dithering; unset inherits the server defaults. |
+| `high_res` | no | 600 dpi mode on supported printers; unset inherits the server default. |
+| `threshold` | no | Black/white cutoff, 1-100 (server default 70); ignored with `dither`. |
 | `idempotency_key` | no | Stable key so labelito dedupes a replayed request; see retries below. |
 | `config_entry_id` | no | Only needed when several labelito services are configured. |
 | `seq_count` | no | Number of labels in an auto-numbering batch (1-500); see below. |
@@ -101,6 +104,35 @@ data:
 Errors are actionable: an unknown template lists the valid template names, and a roll mismatch
 reports it in plain words (for example "The loaded roll is 62mm continuous but the template needs
 29x90mm die-cut").
+
+### Inline templates
+
+`template_inline` prints a label designed on the fly, without storing it on the server. It needs
+`INLINE_TEMPLATES_ENABLED=true` on labelito (the add-on's `inline_templates_enabled` option);
+otherwise the call fails with a 403. The body follows the
+[labelito template format](https://github.com/chiva/labelito/blob/main/docs/template-format.md),
+including the label-wide `font` and, for a landscape layout on continuous tape, `length`:
+
+```yaml
+action: labelito.print
+data:
+  template_inline: |
+    name: shelf-tag
+    description: Shelf tag along 80 mm of 62 mm tape
+    label: "62"
+    rotate: 90
+    length: 80          # mm along the tape; required for rotate 90/270 on continuous media
+    font: barlow-condensed
+    fields:
+      required: [title]
+    layout:
+      - {type: title, text: "{{title}}"}
+  fields:
+    title: "Screws M4"
+```
+
+A body labelito cannot load fails with its reason, for example
+"Invalid template YAML: … rotate 90 on continuous label '62' requires 'length' (mm) …".
 
 ## `labelito.reprint_last`
 
