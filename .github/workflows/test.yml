@@ -21,7 +21,7 @@ jobs:
         with:
           # pytest-homeassistant-custom-component is welded to one HA core version; single Python
           # version is the norm (matrixing HA versions is the meaningful axis if wanted later).
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - run: pip install -r requirements_test.txt
       - name: Run tests
