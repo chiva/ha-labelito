@@ -8,8 +8,8 @@ from typing import Any
 from unittest.mock import patch
 
 import aiohttp
+import probatio
 import pytest
-import voluptuous as vol
 from aiohttp.client_reqrep import ConnectionKey
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SSL, CONF_VERIFY_SSL
@@ -506,7 +506,7 @@ async def test_reconfigure_of_entry_predating_the_tls_options(
     assert entry.data[CONF_API_TOKEN] == MOCK_TOKEN
 
 
-def _schema_default(schema: vol.Schema, key: str) -> Any:
+def _schema_default(schema: probatio.Schema, key: str) -> Any:
     """The value an options form pre-fills a field with (what a user submits if they don't touch it)."""
     for marker in schema.schema:
         if marker == key:

@@ -11,7 +11,7 @@ import difflib
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import voluptuous as vol
+import probatio
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
@@ -480,8 +480,8 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
         "free-form text to put on the label. Use only when the user asks to print a label."
     )
     slot_schema: ClassVar = {
-        vol.Required(SLOT_TEMPLATE): cv.string,
-        vol.Optional(SLOT_TEXT): cv.string,
+        probatio.Required(SLOT_TEMPLATE): cv.string,
+        probatio.Optional(SLOT_TEXT): cv.string,
     }
 
     async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:

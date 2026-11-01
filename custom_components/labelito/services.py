@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any, NoReturn
 
-import voluptuous as vol
+import probatio
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import (
     HomeAssistant,
@@ -78,55 +78,57 @@ from .const import (
 if TYPE_CHECKING:
     from .coordinator import LabelitoCoordinator
 
-SERVICE_PRINT_SCHEMA = vol.Schema(
-    vol.All(
+SERVICE_PRINT_SCHEMA = probatio.Schema(
+    probatio.All(
         {
             # Exactly one template source: Exclusive rejects supplying both, and the
             # has_at_least_one_key wrapper below rejects supplying neither. Both are length-checked
             # (min 1) so an empty string is rejected here rather than reaching the catalog lookup as
             # a confusing "Unknown template ''".
-            vol.Exclusive(ATTR_TEMPLATE, "template_source"): vol.All(cv.string, vol.Length(min=1)),
-            vol.Exclusive(ATTR_TEMPLATE_INLINE, "template_source"): vol.All(
-                cv.string, vol.Length(min=1, max=MAX_TEMPLATE_INLINE_CHARS)
+            probatio.Exclusive(ATTR_TEMPLATE, "template_source"): probatio.All(
+                cv.string, probatio.Length(min=1)
             ),
-            vol.Optional(ATTR_FIELDS, default=dict): vol.Schema({cv.string: object}),
-            vol.Optional(ATTR_COPIES, default=MIN_COPIES): vol.All(
-                vol.Coerce(int), vol.Range(min=MIN_COPIES, max=MAX_COPIES)
+            probatio.Exclusive(ATTR_TEMPLATE_INLINE, "template_source"): probatio.All(
+                cv.string, probatio.Length(min=1, max=MAX_TEMPLATE_INLINE_CHARS)
             ),
-            vol.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
-            vol.Optional(ATTR_LANGUAGE): cv.string,
-            vol.Optional(ATTR_CUT): cv.boolean,
-            vol.Optional(ATTR_RED): cv.boolean,
-            vol.Optional(ATTR_DITHER): cv.boolean,
-            vol.Optional(ATTR_HIGH_RES): cv.boolean,
-            vol.Optional(ATTR_THRESHOLD): vol.All(
-                vol.Coerce(int), vol.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD)
+            probatio.Optional(ATTR_FIELDS, default=dict): probatio.Schema({cv.string: object}),
+            probatio.Optional(ATTR_COPIES, default=MIN_COPIES): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=MIN_COPIES, max=MAX_COPIES)
             ),
-            vol.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
+            probatio.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
+            probatio.Optional(ATTR_LANGUAGE): cv.string,
+            probatio.Optional(ATTR_CUT): cv.boolean,
+            probatio.Optional(ATTR_RED): cv.boolean,
+            probatio.Optional(ATTR_DITHER): cv.boolean,
+            probatio.Optional(ATTR_HIGH_RES): cv.boolean,
+            probatio.Optional(ATTR_THRESHOLD): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=MIN_THRESHOLD, max=MAX_THRESHOLD)
+            ),
+            probatio.Optional(ATTR_IDEMPOTENCY_KEY): cv.string,
             # Auto-numbering ({{seq}}) batch. No defaults: an absent input is omitted from the request
             # so labelito's SequenceSpec applies its own default. seq_count is what marks a request as
             # a sequence batch (see _build_print_request); the others only shape the number.
-            vol.Optional(ATTR_SEQ_COUNT): vol.All(
-                vol.Coerce(int), vol.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
+            probatio.Optional(ATTR_SEQ_COUNT): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=MIN_SEQ_COUNT, max=MAX_SEQ_COUNT)
             ),
-            vol.Optional(ATTR_SEQ_START): vol.All(
-                vol.Coerce(int), vol.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
+            probatio.Optional(ATTR_SEQ_START): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=MIN_SEQ_START, max=MAX_SEQ_START)
             ),
-            vol.Optional(ATTR_SEQ_STEP): vol.All(
-                vol.Coerce(int), vol.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
+            probatio.Optional(ATTR_SEQ_STEP): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=MIN_SEQ_STEP, max=MAX_SEQ_STEP)
             ),
-            vol.Optional(ATTR_SEQ_PADDING): vol.All(
-                vol.Coerce(int), vol.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
+            probatio.Optional(ATTR_SEQ_PADDING): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=MIN_SEQ_PADDING, max=MAX_SEQ_PADDING)
             ),
-            vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+            probatio.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
         },
         cv.has_at_least_one_key(ATTR_TEMPLATE, ATTR_TEMPLATE_INLINE),
     )
 )
 
-SERVICE_REPRINT_LAST_SCHEMA = vol.Schema(
+SERVICE_REPRINT_LAST_SCHEMA = probatio.Schema(
     {
-        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        probatio.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
     }
 )
 
@@ -356,7 +358,7 @@ def _build_print_request(data: dict[str, Any]) -> dict[str, Any]:
         ATTR_COPIES: data[ATTR_COPIES],
         ATTR_DRY_RUN: data[ATTR_DRY_RUN],
     }
-    # Exactly one template source is present (SERVICE_PRINT_SCHEMA: vol.Exclusive rejects both,
+    # Exactly one template source is present (SERVICE_PRINT_SCHEMA: probatio.Exclusive rejects both,
     # cv.has_at_least_one_key rejects neither).
     if ATTR_TEMPLATE in data:
         request[ATTR_TEMPLATE] = data[ATTR_TEMPLATE]
