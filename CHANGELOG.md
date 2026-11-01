@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/chiva/ha-labelito/compare/v1.3.1...v1.3.2) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** support Home Assistant 2026.10 and its probatio schemas ([#58](https://github.com/chiva/ha-labelito/issues/58)) ([dd3952e](https://github.com/chiva/ha-labelito/commit/dd3952e6c86c40f379c8d7b432a2ffddfe635814))
+
 ## [1.3.1](https://github.com/chiva/ha-labelito/compare/v1.3.0...v1.3.1) (2026-09-27)
 
 
