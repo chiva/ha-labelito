@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-import voluptuous as vol
+import probatio
 import yaml
 from homeassistant.const import SERVICE_RELOAD
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
@@ -197,12 +197,14 @@ WILDCARD_HEADER: Final = f"""\
 """
 
 
-SERVICE_WRITE_VOICE_SENTENCES_SCHEMA = vol.Schema(
+SERVICE_WRITE_VOICE_SENTENCES_SCHEMA = probatio.Schema(
     {
         # Restricted to the languages a grammar exists for: a value outside it could only ever
         # write a file Home Assistant would load and then fail to match anything from.
-        vol.Optional(ATTR_LANGUAGE): vol.All(cv.ensure_list, [vol.In(SUPPORTED_LANGUAGES)]),
-        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        probatio.Optional(ATTR_LANGUAGE): probatio.All(
+            cv.ensure_list, [probatio.In(SUPPORTED_LANGUAGES)]
+        ),
+        probatio.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
     }
 )
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
+import probatio
 from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
@@ -34,13 +34,13 @@ from .const import (
     SCAN_INTERVAL_USB,
 )
 
-STEP_USER_SCHEMA = vol.Schema(
+STEP_USER_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.port,
-        vol.Required(CONF_SSL, default=DEFAULT_SSL): cv.boolean,
-        vol.Required(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): cv.boolean,
-        vol.Optional(CONF_API_TOKEN): cv.string,
+        probatio.Required(CONF_HOST): cv.string,
+        probatio.Required(CONF_PORT, default=DEFAULT_PORT): cv.port,
+        probatio.Required(CONF_SSL, default=DEFAULT_SSL): cv.boolean,
+        probatio.Required(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): cv.boolean,
+        probatio.Optional(CONF_API_TOKEN): cv.string,
     }
 )
 
@@ -59,19 +59,19 @@ MIN_SCAN_INTERVAL_SECONDS = 5
 MAX_SCAN_INTERVAL_SECONDS = 3600
 
 
-def _reconfigure_schema(data: Mapping[str, Any]) -> vol.Schema:
+def _reconfigure_schema(data: Mapping[str, Any]) -> probatio.Schema:
     """Address and TLS settings of an existing entry, pre-filled with what it currently uses.
 
     The API token is deliberately absent: it is a secret that should not be echoed back into a
     form, and replacing it is what the reauth flow already does. Entries created before the TLS
     options existed have neither key, so both fall back to their defaults.
     """
-    return vol.Schema(
+    return probatio.Schema(
         {
-            vol.Required(CONF_HOST, default=data[CONF_HOST]): cv.string,
-            vol.Required(CONF_PORT, default=data[CONF_PORT]): cv.port,
-            vol.Required(CONF_SSL, default=data.get(CONF_SSL, DEFAULT_SSL)): cv.boolean,
-            vol.Required(
+            probatio.Required(CONF_HOST, default=data[CONF_HOST]): cv.string,
+            probatio.Required(CONF_PORT, default=data[CONF_PORT]): cv.port,
+            probatio.Required(CONF_SSL, default=data.get(CONF_SSL, DEFAULT_SSL)): cv.boolean,
+            probatio.Required(
                 CONF_VERIFY_SSL, default=data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
             ): cv.boolean,
         }
@@ -230,7 +230,7 @@ class LabelitoConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_API_TOKEN): cv.string}),
+            data_schema=probatio.Schema({probatio.Required(CONF_API_TOKEN): cv.string}),
             errors=errors,
         )
 
@@ -328,13 +328,13 @@ class LabelitoOptionsFlow(OptionsFlow):
                 options.pop(CONF_SCAN_INTERVAL, None)
             return self.async_create_entry(data=options)
         current_dry_run = self.config_entry.options.get(CONF_VOICE_DRY_RUN, DEFAULT_VOICE_DRY_RUN)
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
-                    vol.Coerce(int),
-                    vol.Range(min=MIN_SCAN_INTERVAL_SECONDS, max=MAX_SCAN_INTERVAL_SECONDS),
+                probatio.Required(CONF_SCAN_INTERVAL, default=current): probatio.All(
+                    probatio.Coerce(int),
+                    probatio.Range(min=MIN_SCAN_INTERVAL_SECONDS, max=MAX_SCAN_INTERVAL_SECONDS),
                 ),
-                vol.Required(CONF_VOICE_DRY_RUN, default=current_dry_run): cv.boolean,
+                probatio.Required(CONF_VOICE_DRY_RUN, default=current_dry_run): cv.boolean,
             }
         )
         return self.async_show_form(

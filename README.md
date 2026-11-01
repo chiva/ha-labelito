@@ -45,7 +45,8 @@ printer service itself; it talks to a labelito service you run separately (or as
 
 - A running labelito service (Docker, bare metal, or the Home Assistant add-on) reachable from
   Home Assistant, speaking labelito API version 3 (labelito 1.0.0 still speaks it).
-- Home Assistant 2026.7 or newer (it ships Python 3.14, which this integration requires).
+- Home Assistant 2026.9 or newer (it ships probatio, the validation library the integration's
+  schemas are built with, and Python 3.14).
 
 ## Installation
 

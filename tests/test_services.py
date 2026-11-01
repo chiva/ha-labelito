@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock
 
+import probatio
 import pytest
-import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -396,25 +396,25 @@ def test_print_schema_accepts_either_template_source() -> None:
 
 def test_print_schema_requires_a_template_source() -> None:
     # Neither source → rejected up front by has_at_least_one_key (not left to the handler).
-    with pytest.raises(vol.MultipleInvalid):
+    with pytest.raises(probatio.MultipleInvalid):
         SERVICE_PRINT_SCHEMA({"fields": {}, "copies": 1})
 
 
 def test_print_schema_rejects_empty_template() -> None:
     # An empty string must not slip past as a present template and reach the catalog as "''".
-    with pytest.raises(vol.MultipleInvalid):
+    with pytest.raises(probatio.MultipleInvalid):
         SERVICE_PRINT_SCHEMA({"template": ""})
 
 
 def test_print_schema_rejects_both_template_sources() -> None:
-    with pytest.raises(vol.MultipleInvalid):
+    with pytest.raises(probatio.MultipleInvalid):
         SERVICE_PRINT_SCHEMA({"template": "pantry", "template_inline": "label: 62\n", "fields": {}})
 
 
 def test_print_schema_rejects_out_of_range_threshold() -> None:
     # 0 (below the exclusive server floor) and 101 (above 100) are both rejected.
     for bad in (0, 101):
-        with pytest.raises(vol.MultipleInvalid):
+        with pytest.raises(probatio.MultipleInvalid):
             SERVICE_PRINT_SCHEMA({"template": "pantry", "threshold": bad})
 
 
