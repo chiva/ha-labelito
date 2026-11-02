@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/chiva/ha-labelito/compare/v1.3.2...v1.4.0) (2026-11-02)
+
+
+### Features
+
+* **voice:** accept natural Spanish phrasing and a spoken copy count ([#60](https://github.com/chiva/ha-labelito/issues/60)) ([c116207](https://github.com/chiva/ha-labelito/commit/c116207832ab5a61de6db7838abb1b42c396ea0f))
+
 ## [1.3.2](https://github.com/chiva/ha-labelito/compare/v1.3.1...v1.3.2) (2026-11-01)
 
 
