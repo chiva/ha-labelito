@@ -26,6 +26,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.labelito.const import DOMAIN, INTENT_PRINT, SERVICE_WRITE_VOICE_SENTENCES
+from custom_components.labelito.intents import (
+    CONNECTOR_PHRASES,
+    SPOKEN_CONNECTORS,
+    _split_template_and_text,
+)
 from custom_components.labelito.voice_sentences import (
     _CATALOG_TO_DISK,
     CLOSED_LIST_FILENAME,
@@ -826,7 +831,8 @@ def _recognize(documents: list[dict[str, Any]], text: str) -> Any:
         hassil.Intents.from_dict(merged),
         best_metadata_key=METADATA_CUSTOM_SENTENCE,
         best_slot_name="name",
-        language="es",
+        # HA recognizes per language, and range lists spell number words in that language only.
+        language=merged["language"],
     )
 
 
@@ -905,6 +911,29 @@ def _both_documents() -> list[dict[str, Any]]:
         ),
         # And the shorter name with dictated text still resolves to the shorter name.
         ("haz una etiqueta de regalo para juan", {"template": "regalo", "text": "juan"}),
+        # Real-world phrasing: "saca" as a verb, and the article left out entirely.
+        (
+            "saca una etiqueta de congelador para lasaña",
+            {"template": "congelador", "text": "lasaña"},
+        ),
+        (
+            "imprime etiqueta de congelador para lasaña",
+            {"template": "congelador", "text": "lasaña"},
+        ),
+        ("saca etiqueta de hoy", {"template": "hoy"}),
+        # Clitic verbs, accented and as an ASR that drops the accent spells them.
+        (
+            "sácame la etiqueta del congelador que ponga lasaña",
+            {"template": "congelador", "text": "lasaña"},
+        ),
+        ("sacame una etiqueta de hoy", {"template": "hoy"}),
+        ("imprímeme una etiqueta de nevera para leche", {"template": "nevera", "text": "leche"}),
+        (
+            "hazme otra etiqueta de la nevera con el texto yogur",
+            {"template": "nevera", "text": "yogur"},
+        ),
+        # No preposition at all, the way it is said in a hurry.
+        ("imprime etiqueta congelador", {"template": "congelador"}),
     ],
 )
 def test_the_closed_list_wins_and_separates_the_text(
@@ -919,6 +948,117 @@ def test_the_closed_list_wins_and_separates_the_text(
     result = _recognize(_both_documents(), utterance)
     assert result is not None, utterance
     assert _slots(result) == expected
+
+
+@pytest.mark.parametrize(
+    ("utterance", "expected_name", "expected_text"),
+    [
+        ("saca una etiqueta de congelador para lasaña", "congelador", "lasaña"),
+        ("sácame la etiqueta del congelador que ponga lasaña", "congelador", "lasaña"),
+        ("hazme otra etiqueta de la nevera con el texto yogur", "nevera", "yogur"),
+        ("Saca etiqueta de congelador, que ponga lasaña.", "congelador", "lasaña"),
+        ("imprimeme una etiqueta de meal prep que diga pollo", "meal-prep", "pollo"),
+        ("saca una etiqueta de hoy", "hoy", None),
+    ],
+)
+def test_every_new_phrasing_survives_the_wildcard_only_path(
+    utterance: str, expected_name: str, expected_text: str | None
+) -> None:
+    """Without the generated closed list, the wildcard swallows the text and the handler splits it.
+
+    That only works if every connector the grammar accepts is one the handler splits on — the
+    property SPOKEN_CONNECTORS exists to guarantee. Fed through the real recognizer, then the
+    real split, so a connector added to one side only fails here.
+    """
+    result = _recognize([wildcard_document("es")], utterance)
+    assert result is not None, utterance
+    slots = _slots(result)
+    print(f"{utterance!r} -> wildcard slots {slots}")
+    assert "text" not in slots
+    template, text = _split_template_and_text(slots["template"], CATALOG)
+    assert (template["name"] if template else None) == expected_name
+    assert text == expected_text
+
+
+@pytest.mark.parametrize(
+    ("language", "utterance", "expected"),
+    [
+        # Number words in the recognition language, and digits.
+        (
+            "es",
+            "imprime dos etiquetas de congelador para lasaña",
+            {"copies": 2, "template": "congelador", "text": "lasaña"},
+        ),
+        ("es", "saca 3 etiquetas de hoy", {"copies": 3, "template": "hoy"}),
+        ("es", "sácame cuatro etiquetas del congelador", {"copies": 4, "template": "congelador"}),
+        (
+            "es",
+            "imprime tres copias de la etiqueta de nevera que ponga leche",
+            {"copies": 3, "template": "nevera", "text": "leche"},
+        ),
+        # Feminine agreement ("veintiuna", not "veintiuno") and a count past MAX_COPIES, which
+        # must still be RECOGNIZED so the handler can say the limit instead of "not understood".
+        ("es", "haz veintiuna etiquetas de hoy", {"copies": 21, "template": "hoy"}),
+        # The singular forms carry no count at all: the handler defaults to one.
+        ("es", "imprime una etiqueta de congelador", {"template": "congelador"}),
+        ("es", "saca etiqueta de hoy", {"template": "hoy"}),
+        (
+            "en",
+            "print two congelador labels for lasagna",
+            {"copies": 2, "template": "congelador", "text": "lasagna"},
+        ),
+        ("en", "make 3 hoy labels", {"copies": 3, "template": "hoy"}),
+        ("en", "print a hoy label", {"template": "hoy"}),
+        # Plural agreement: with only "[that says]" optional, "that say" was printed as text.
+        (
+            "en",
+            "print two congelador labels that say lasagna",
+            {"copies": 2, "template": "congelador", "text": "lasagna"},
+        ),
+        (
+            "en",
+            "make 2 congelador labels that says lasagna",
+            {"copies": 2, "template": "congelador", "text": "lasagna"},
+        ),
+    ],
+)
+@pytest.mark.parametrize("grammar", ["closed_list", "wildcard_only"])
+def test_a_spoken_count_fills_the_copies_slot(
+    grammar: str, language: str, utterance: str, expected: dict[str, Any]
+) -> None:
+    """Both grammars carry the count, since either file can be the only one installed.
+
+    The wildcard-only parse folds Spanish text into the template slot as always; only the count
+    and the template prefix are compared there, the text being the handler's to recover.
+    """
+    if grammar == "closed_list":
+        values, _ = _closed_list_values(CATALOG)
+        documents = [wildcard_document(language), closed_list_document(language, values)]
+    else:
+        documents = [wildcard_document(language)]
+    result = _recognize(documents, utterance)
+    assert result is not None, utterance
+    slots = _slots(result)
+    print(f"[{grammar}] {utterance!r} -> {slots}")
+    assert slots.get("copies") == expected.get("copies")
+    if grammar == "closed_list" or language == "en":
+        assert slots == expected
+    else:
+        assert slots["template"].startswith(expected["template"])
+
+
+def test_an_english_count_is_not_swallowed_by_the_singular_wildcard() -> None:
+    """ "print 3 pantry labels" must not parse as template="3 pantry" against "label" + "s"."""
+    result = _recognize([wildcard_document("en")], "print 3 pantry labels")
+    assert result is not None
+    assert _slots(result) == {"copies": 3, "template": "pantry"}
+
+
+def test_every_spanish_grammar_connector_is_a_split_phrase() -> None:
+    for phrase in SPOKEN_CONNECTORS["es"]:
+        assert tuple(phrase.split()) in CONNECTOR_PHRASES, phrase
+    lengths = [len(phrase) for phrase in CONNECTOR_PHRASES]
+    assert lengths == sorted(lengths, reverse=True), CONNECTOR_PHRASES
 
 
 @pytest.mark.parametrize(

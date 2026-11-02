@@ -13,15 +13,15 @@ intents:
   LabelitoPrint:
     data:
     - sentences:
-      - imprime una etiqueta [de] {labelito_template:template} para {labelito_text:text}
-      - imprime una etiqueta [de] {labelito_template:template} que diga {labelito_text:text}
-      - haz una etiqueta [de] {labelito_template:template} para {labelito_text:text}
-      - haz una etiqueta [de] {labelito_template:template} que diga {labelito_text:text}
+      - (imprime|imprímeme|imprimeme|haz|hazme|saca|sácame|sacame) ([una|la|otra] etiqueta|{labelito_copies:copies} etiquetas|{labelito_copies:copies} copias de [la] etiqueta) [de|del|de la] {labelito_template:template} (para|que diga|que ponga|con el texto) {labelito_text:text}
     - sentences:
-      - imprime una etiqueta [de] {labelito_template:template}
-      - haz una etiqueta [de] {labelito_template:template}
+      - (imprime|imprímeme|imprimeme|haz|hazme|saca|sácame|sacame) ([una|la|otra] etiqueta|{labelito_copies:copies} etiquetas|{labelito_copies:copies} copias de [la] etiqueta) [de|del|de la] {labelito_template:template}
 lists:
   labelito_template:
     wildcard: true
   labelito_text:
     wildcard: true
+  labelito_copies:
+    range:
+      from: 1
+      to: 100

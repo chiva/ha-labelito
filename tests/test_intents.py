@@ -12,13 +12,20 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
+import probatio
 import pytest
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import intent
 
 from custom_components.labelito.api import LabelitoApiError
-from custom_components.labelito.const import ATTR_DRY_RUN, CONF_VOICE_DRY_RUN, INTENT_PRINT
+from custom_components.labelito.const import (
+    ATTR_COPIES,
+    ATTR_DRY_RUN,
+    CONF_VOICE_DRY_RUN,
+    INTENT_PRINT,
+    MAX_COPIES,
+)
 from custom_components.labelito.intents import (
     LabelitoPrintIntentHandler,
     _split_template_and_text,
@@ -281,6 +288,105 @@ async def test_voice_dry_run_sends_flag_and_says_nothing_printed(
 
     assert _printed_request(execute)[ATTR_DRY_RUN] is True
     assert expected_fragment in _speech(response)
+
+
+# --- spoken copy count -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("language", "slots", "expected_copies", "expected_speech"),
+    [
+        # No count spoken: one copy, and the singular wording every earlier release used.
+        (
+            "es",
+            {"template": "pantry", "text": "sopa"},
+            1,
+            "He imprimido una etiqueta de pantry para sopa.",
+        ),
+        # A spoken digit arrives from hassil as a float; labelito's copies is an integer.
+        (
+            "es",
+            {"template": "pantry", "text": "sopa", "copies": 3.0},
+            3,
+            "He imprimido 3 etiquetas de pantry para sopa.",
+        ),
+        # A number word arrives as an int, and a count of exactly one keeps the singular.
+        (
+            "es",
+            {"template": "pantry", "text": "sopa", "copies": 1},
+            1,
+            "He imprimido una etiqueta de pantry para sopa.",
+        ),
+        # The count survives the over-captured wildcard path, where the text is recovered later.
+        (
+            "es",
+            {"template": "pantry que ponga sopa", "copies": 2},
+            2,
+            "He imprimido 2 etiquetas de pantry para sopa.",
+        ),
+        (
+            "en",
+            {"template": "pantry", "text": "tomato soup", "copies": 2},
+            2,
+            "Printed 2 pantry labels for tomato soup.",
+        ),
+        ("en", {"template": "blank", "copies": 10}, 10, "Printed 10 blank labels."),
+    ],
+)
+async def test_spoken_copies_reach_the_request_and_the_reply(
+    hass: HomeAssistant,
+    language: str,
+    slots: dict[str, Any],
+    expected_copies: int,
+    expected_speech: str,
+) -> None:
+    coordinator = _make_coordinator([*MOCK_TEMPLATES, NO_REQUIRED_TEMPLATE])
+    response, execute = await _handle(hass, slots, language=language, coordinator=coordinator)
+    request = _printed_request(execute)
+    print(f"{slots} -> copies={request[ATTR_COPIES]!r}, speech={_speech(response)!r}")
+    assert request[ATTR_COPIES] == expected_copies
+    assert type(request[ATTR_COPIES]) is int
+    assert _speech(response) == expected_speech
+
+
+@pytest.mark.parametrize(
+    ("language", "expected_speech"),
+    [
+        ("es", "Como máximo puedo imprimir 10 etiquetas de una vez."),
+        ("en", "I can print at most 10 labels at a time."),
+    ],
+)
+async def test_too_many_copies_is_answered_in_words_without_printing(
+    hass: HomeAssistant, language: str, expected_speech: str
+) -> None:
+    """The grammar recognizes counts past MAX_COPIES on purpose, so the refusal can be spoken."""
+    response, execute = await _handle(
+        hass, {"template": "pantry", "copies": MAX_COPIES + 1}, language=language
+    )
+    execute.assert_not_awaited()
+    assert response.error_code == intent.IntentResponseErrorCode.FAILED_TO_HANDLE
+    assert _speech(response) == expected_speech
+
+
+async def test_zero_copies_is_rejected_by_the_slot_schema(hass: HomeAssistant) -> None:
+    """Unreachable by voice (the range list starts at 1), but an LLM tool call can send it.
+
+    The handler raises the schema error itself; HA's intent.async_handle is what rewraps it as
+    InvalidSlotInfo for the caller.
+    """
+    with pytest.raises(probatio.Invalid, match="at least 1"):
+        await _handle(hass, {"template": "pantry", "copies": 0})
+
+
+async def test_dry_run_reply_agrees_with_the_count(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(options={CONF_VOICE_DRY_RUN: True})
+    response, execute = await _handle(
+        hass, {"template": "pantry", "text": "sopa", "copies": 2}, coordinator=coordinator
+    )
+    assert _printed_request(execute)[ATTR_COPIES] == 2
+    assert _speech(response) == (
+        "Prueba en seco: no he impreso nada. Habría impreso 2 etiquetas de pantry para sopa."
+    )
 
 
 # --- the split helper in isolation ----------------------------------------------------------

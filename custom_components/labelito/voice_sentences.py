@@ -68,9 +68,15 @@ from .const import (
     ATTR_WRITTEN,
     DOMAIN,
     INTENT_PRINT,
+    MIN_COPIES,
     SERVICE_WRITE_VOICE_SENTENCES,
 )
-from .intents import ambiguous_spoken_forms, resolvable_spoken_forms, unsayable_template_names
+from .intents import (
+    SPOKEN_CONNECTORS,
+    ambiguous_spoken_forms,
+    resolvable_spoken_forms,
+    unsayable_template_names,
+)
 from .services import resolve_coordinator
 
 if TYPE_CHECKING:
@@ -105,6 +111,7 @@ CONVERSATION_DOMAIN: Final = "conversation"
 TEMPLATE_LIST: Final = f"{DOMAIN}_template_name"
 WILDCARD_TEMPLATE_LIST: Final = f"{DOMAIN}_template"
 TEXT_LIST: Final = f"{DOMAIN}_text"
+COPIES_LIST: Final = f"{DOMAIN}_copies"
 
 # The slot placeholder used in SENTENCE_GROUPS, and what each grammar substitutes for it.
 WILDCARD_SLOT: Final = "{template}"
@@ -112,12 +119,41 @@ WILDCARD_TEMPLATE_SLOT: Final = f"{{{WILDCARD_TEMPLATE_LIST}:template}}"
 CLOSED_LIST_SLOT: Final = f"{{{TEMPLATE_LIST}:template}}"
 TEXT_SLOT: Final = "{text}"
 NAMESPACED_TEXT_SLOT: Final = f"{{{TEXT_LIST}:text}}"
+COPIES_SLOT: Final = "{copies}"
+NAMESPACED_COPIES_SLOT: Final = f"{{{COPIES_LIST}:copies}}"
+
+# The spoken copy count is a hassil range list, which matches digits AND number words in the
+# recognition language ("tres", "veintiuna", "ten"). Its ceiling is deliberately far above
+# MAX_COPIES: an over-limit count must still be RECOGNIZED so the handler can answer "at most
+# 10" — with the range capped at 10, "imprime veinte etiquetas" matches no sentence and Assist
+# only says it did not understand.
+SPOKEN_COPIES_MAX: Final = 100
+COPIES_RANGE: Final = {"range": {"from": MIN_COPIES, "to": SPOKEN_COPIES_MAX}}
 
 # One source for both grammars: the closed-list sentences are these with the slot substituted, so
 # the two can never drift into matching different phrasings. Kept byte-identical to the shipped
 # custom_sentences/<lang>/labelito.yaml (a test pins that), because the integration cannot read
 # that folder at runtime — HACS installs custom_components/ only.
 #
+# Spanish is spoken far less rigidly than the English template allows, so its sentence is built
+# from alternatives rather than enumerated: every verb x article x preposition x connector would
+# be over a thousand literal lines. Each tuple is one hassil (a|b) group or [a|b] optional.
+#
+# Verbs include the clitic forms people actually say ("hazme", "sácame") and their unaccented
+# spellings, because hassil does not fold diacritics and speech-to-text engines drop accents
+# inconsistently. The article is optional ("imprime etiqueta de congelador") and may be "la" or
+# "otra" for a repeat; "del" / "de la" cover "la etiqueta del congelador". A count replaces the
+# article ("dos etiquetas", "tres copias de la etiqueta"). Connectors come from SPOKEN_CONNECTORS
+# so the handler's wildcard split always knows every phrase the grammar accepts.
+ES_VERBS: Final = ("imprime", "imprímeme", "imprimeme", "haz", "hazme", "saca", "sácame", "sacame")
+ES_ARTICLES: Final = ("una", "la", "otra")
+ES_PREPOSITIONS: Final = ("de", "del", "de la")
+_ES_PREFIX: Final = (
+    f"({'|'.join(ES_VERBS)}) "
+    f"([{'|'.join(ES_ARTICLES)}] etiqueta|{COPIES_SLOT} etiquetas|{COPIES_SLOT} copias de [la] etiqueta) "
+    f"[{'|'.join(ES_PREPOSITIONS)}] {WILDCARD_SLOT}"
+)
+
 # Each language's groups are (with-text, without-text). The order between groups is irrelevant:
 # recognize_best scores results, it does not prefer earlier sentences, and Home Assistant merges
 # the files in filesystem order anyway.
@@ -128,23 +164,21 @@ SENTENCE_GROUPS: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
             "print [a] {template} label [that says] {text}",
             "make [a] {template} label [for] {text}",
             "make [a] {template} label [that says] {text}",
+            "print {copies} {template} labels [for] {text}",
+            "print {copies} {template} labels [that say|that says] {text}",
+            "make {copies} {template} labels [for] {text}",
+            "make {copies} {template} labels [that say|that says] {text}",
         ),
         (
             "print [a] {template} label",
             "make [a] {template} label",
+            "print {copies} {template} labels",
+            "make {copies} {template} labels",
         ),
     ),
     "es": (
-        (
-            "imprime una etiqueta [de] {template} para {text}",
-            "imprime una etiqueta [de] {template} que diga {text}",
-            "haz una etiqueta [de] {template} para {text}",
-            "haz una etiqueta [de] {template} que diga {text}",
-        ),
-        (
-            "imprime una etiqueta [de] {template}",
-            "haz una etiqueta [de] {template}",
-        ),
+        (f"{_ES_PREFIX} ({'|'.join(SPOKEN_CONNECTORS['es'])}) {TEXT_SLOT}",),
+        (_ES_PREFIX,),
     ),
 }
 SUPPORTED_LANGUAGES: Final = tuple(SENTENCE_GROUPS)
@@ -291,7 +325,9 @@ def _substitute(language: str, template_slot: str) -> tuple[tuple[str, ...], ...
     """SENTENCE_GROUPS with the template and text placeholders replaced by namespaced slots."""
     return tuple(
         tuple(
-            sentence.replace(WILDCARD_SLOT, template_slot).replace(TEXT_SLOT, NAMESPACED_TEXT_SLOT)
+            sentence.replace(WILDCARD_SLOT, template_slot)
+            .replace(TEXT_SLOT, NAMESPACED_TEXT_SLOT)
+            .replace(COPIES_SLOT, NAMESPACED_COPIES_SLOT)
             for sentence in group
         )
         for group in SENTENCE_GROUPS[language]
@@ -303,21 +339,29 @@ def wildcard_document(language: str) -> dict[str, Any]:
     return _document(
         language,
         _substitute(language, WILDCARD_TEMPLATE_SLOT),
-        {WILDCARD_TEMPLATE_LIST: {"wildcard": True}, TEXT_LIST: {"wildcard": True}},
+        {
+            WILDCARD_TEMPLATE_LIST: {"wildcard": True},
+            TEXT_LIST: {"wildcard": True},
+            COPIES_LIST: COPIES_RANGE,
+        },
     )
 
 
 def closed_list_document(language: str, values: list[dict[str, str]]) -> dict[str, Any]:
     """The closed-list grammar: the same sentences over a list of the names that actually exist.
 
-    Defines the text list as well as the name list. Both files declaring it is deliberate: each
+    Defines the text and copies lists as well as the name list. Both files declaring it is deliberate: each
     file must be a valid grammar on its own, because either can be absent, and Home Assistant's
     merge collapses the two identical declarations.
     """
     return _document(
         language,
         _substitute(language, CLOSED_LIST_SLOT),
-        {TEMPLATE_LIST: {"values": values}, TEXT_LIST: {"wildcard": True}},
+        {
+            TEMPLATE_LIST: {"values": values},
+            TEXT_LIST: {"wildcard": True},
+            COPIES_LIST: COPIES_RANGE,
+        },
     )
 
 
