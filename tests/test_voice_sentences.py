@@ -1009,6 +1009,17 @@ def test_every_new_phrasing_survives_the_wildcard_only_path(
         ),
         ("en", "make 3 hoy labels", {"copies": 3, "template": "hoy"}),
         ("en", "print a hoy label", {"template": "hoy"}),
+        # Plural agreement: with only "[that says]" optional, "that say" was printed as text.
+        (
+            "en",
+            "print two congelador labels that say lasagna",
+            {"copies": 2, "template": "congelador", "text": "lasagna"},
+        ),
+        (
+            "en",
+            "make 2 congelador labels that says lasagna",
+            {"copies": 2, "template": "congelador", "text": "lasagna"},
+        ),
     ],
 )
 @pytest.mark.parametrize("grammar", ["closed_list", "wildcard_only"])

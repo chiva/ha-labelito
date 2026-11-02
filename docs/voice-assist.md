@@ -100,6 +100,23 @@ most 10 copies per request. The grammar still recognizes larger counts (up to 10
 didn't understand". Numbered batches (`seq_count`) are not exposed by voice: use the
 `labelito.print` action for those.
 
+### Upgrading an existing install
+
+New phrasings and the copy count reach Home Assistant through two files, which upgrade
+differently:
+
+- `labelito-templates.yaml` (generated) is rewritten automatically the next time the integration
+  starts, because its content no longer matches.
+- `labelito.yaml` (the wildcard grammar) is **yours** and is never overwritten — not by an upgrade
+  and not by `labelito.write_voice_sentences`, which only creates it when missing. Until you
+  replace it, a name that misses the generated list falls back to the old sentences, so a mis-heard
+  name with a count or a new phrasing is not understood.
+
+To upgrade it, for each language under `custom_sentences/<lang>/`: move any sentences you added
+by hand to a separate file in the same directory, delete `labelito.yaml`, then run
+`labelito.write_voice_sentences`, which writes the current grammar and reloads the conversation
+agent.
+
 ## Aliases: the other way you say a name
 
 A template can declare alternative **spoken** names, in its own YAML:

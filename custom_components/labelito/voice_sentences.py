@@ -165,9 +165,9 @@ SENTENCE_GROUPS: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
             "make [a] {template} label [for] {text}",
             "make [a] {template} label [that says] {text}",
             "print {copies} {template} labels [for] {text}",
-            "print {copies} {template} labels [that says] {text}",
+            "print {copies} {template} labels [that say|that says] {text}",
             "make {copies} {template} labels [for] {text}",
-            "make {copies} {template} labels [that says] {text}",
+            "make {copies} {template} labels [that say|that says] {text}",
         ),
         (
             "print [a] {template} label",

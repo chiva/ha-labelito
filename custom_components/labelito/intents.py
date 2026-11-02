@@ -107,7 +107,7 @@ SENTENCE_PUNCTUATION = ".,;:!?¡¿\"'«»…"
 # literally because they anchor on "label" and never reach the split in practice.
 SPOKEN_CONNECTORS: dict[str, tuple[str, ...]] = {
     "es": ("para", "que diga", "que ponga", "con el texto"),
-    "en": ("for", "that says"),
+    "en": ("for", "that says", "that say"),
 }
 
 # When HA's recognize_best collapses the whole utterance into the greedy trailing {template}
