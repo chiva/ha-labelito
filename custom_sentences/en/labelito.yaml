@@ -17,11 +17,21 @@ intents:
       - print [a] {labelito_template:template} label [that says] {labelito_text:text}
       - make [a] {labelito_template:template} label [for] {labelito_text:text}
       - make [a] {labelito_template:template} label [that says] {labelito_text:text}
+      - print {labelito_copies:copies} {labelito_template:template} labels [for] {labelito_text:text}
+      - print {labelito_copies:copies} {labelito_template:template} labels [that says] {labelito_text:text}
+      - make {labelito_copies:copies} {labelito_template:template} labels [for] {labelito_text:text}
+      - make {labelito_copies:copies} {labelito_template:template} labels [that says] {labelito_text:text}
     - sentences:
       - print [a] {labelito_template:template} label
       - make [a] {labelito_template:template} label
+      - print {labelito_copies:copies} {labelito_template:template} labels
+      - make {labelito_copies:copies} {labelito_template:template} labels
 lists:
   labelito_template:
     wildcard: true
   labelito_text:
     wildcard: true
+  labelito_copies:
+    range:
+      from: 1
+      to: 100

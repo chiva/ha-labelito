@@ -28,6 +28,8 @@ from .const import (
     CONF_VOICE_DRY_RUN,
     DEFAULT_VOICE_DRY_RUN,
     INTENT_PRINT,
+    MAX_COPIES,
+    MIN_COPIES,
 )
 from .services import async_execute_print, resolve_coordinator
 
@@ -42,40 +44,48 @@ HTTP_UNPROCESSABLE_CONTENT = 422
 
 SLOT_TEMPLATE = "template"
 SLOT_TEXT = "text"
+SLOT_COPIES = "copies"
 
 DEFAULT_SPEECH_LANGUAGE = "en"
 
 # Spoken confirmations/errors, keyed by the primary language subtag of the Assist request.
 # The resolved language also rides on the print request itself so any printed chrome
 # (labelito's [[translation]] tokens, {{date}} formatting) matches the spoken language.
+#
+# {labels} is the counted noun phrase from "label_one" / "label_many", so every confirmation
+# agrees in number with the copies actually requested without doubling the message table.
 SPEECH: dict[str, dict[str, str]] = {
     "en": {
-        "printed": "Printed a {template} label.",
-        "printed_text": "Printed a {template} label for {text}.",
+        "label_one": "a {template} label",
+        "label_many": "{copies} {template} labels",
+        "printed": "Printed {labels}.",
+        "printed_text": "Printed {labels} for {text}.",
         # Spoken when the voice_dry_run option is on. Worded so the absence of a label is the
         # first thing heard: a silent success would be indistinguishable from a printer fault.
-        "dry_run": "Dry run: nothing printed. The {template} label is ready.",
-        "dry_run_text": "Dry run: nothing printed. The {template} label for {text} is ready.",
+        "dry_run": "Dry run: nothing printed. It would have printed {labels}.",
+        "dry_run_text": "Dry run: nothing printed. It would have printed {labels} for {text}.",
         "unknown_template": (
             "I don't know a label template called {template}. Available templates are: {templates}."
         ),
         "no_templates": "The label printer has no templates configured.",
         "needs_text": "I need the text to put on the {template} label.",
+        "too_many_copies": "I can print at most {max_copies} labels at a time.",
         "failed": "I couldn't print the label: {reason}",
     },
     "es": {
-        "printed": "He imprimido una etiqueta de {template}.",
-        "printed_text": "He imprimido una etiqueta de {template} para {text}.",
-        "dry_run": "Prueba en seco: no he impreso nada. La etiqueta de {template} está lista.",
-        "dry_run_text": (
-            "Prueba en seco: no he impreso nada. La etiqueta de {template} para {text} está lista."
-        ),
+        "label_one": "una etiqueta de {template}",
+        "label_many": "{copies} etiquetas de {template}",
+        "printed": "He imprimido {labels}.",
+        "printed_text": "He imprimido {labels} para {text}.",
+        "dry_run": "Prueba en seco: no he impreso nada. Habría impreso {labels}.",
+        "dry_run_text": "Prueba en seco: no he impreso nada. Habría impreso {labels} para {text}.",
         "unknown_template": (
             "No conozco ninguna plantilla de etiqueta llamada {template}. "
             "Las plantillas disponibles son: {templates}."
         ),
         "no_templates": "La impresora de etiquetas no tiene plantillas configuradas.",
         "needs_text": "Necesito el texto para la etiqueta de {template}.",
+        "too_many_copies": "Como máximo puedo imprimir {max_copies} etiquetas de una vez.",
         "failed": "No he podido imprimir la etiqueta: {reason}",
     },
 }
@@ -91,16 +101,23 @@ FUZZY_MATCH_CUTOFF = 0.6
 # at all.
 SENTENCE_PUNCTUATION = ".,;:!?¡¿\"'«»…"
 
-# Connector phrases that sit between {template} and {text} in the sentence files (es: "para",
-# "que diga"; en: "for", "that says"). When HA's recognize_best collapses the whole utterance into
-# the greedy trailing {template} wildcard (see docs/voice-assist.md), exactly one of these leading
-# phrases is stripped to recover the free text. Ordered longest-first so multi-word phrases win.
-# See _split_template_and_text.
-CONNECTOR_PHRASES: tuple[tuple[str, ...], ...] = (
-    ("que", "diga"),
-    ("that", "says"),
-    ("para",),
-    ("for",),
+# Connector phrases that sit between {template} and {text} in the sentence files, per language.
+# The Spanish grammar in voice_sentences.py is BUILT from SPOKEN_CONNECTORS["es"], so a phrase the
+# grammar accepts is always one the handler can split on; the English sentences spell theirs out
+# literally because they anchor on "label" and never reach the split in practice.
+SPOKEN_CONNECTORS: dict[str, tuple[str, ...]] = {
+    "es": ("para", "que diga", "que ponga", "con el texto"),
+    "en": ("for", "that says"),
+}
+
+# When HA's recognize_best collapses the whole utterance into the greedy trailing {template}
+# wildcard (see docs/voice-assist.md), exactly one of these leading phrases is stripped to recover
+# the free text. Ordered longest-first so multi-word phrases win. See _split_template_and_text.
+CONNECTOR_PHRASES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(
+        {tuple(phrase.split()) for phrases in SPOKEN_CONNECTORS.values() for phrase in phrases},
+        key=lambda phrase: (-len(phrase), phrase),
+    )
 )
 
 
@@ -477,11 +494,19 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
     description = (
         "Prints a physical label on the Brother QL label printer. Requires the name of a "
         "labelito template (for example 'pantry' or 'freezer-dated'); optionally takes the "
-        "free-form text to put on the label. Use only when the user asks to print a label."
+        "free-form text to put on the label and the number of identical copies. Use only when "
+        "the user asks to print a label."
     )
+    # Only the floor is enforced here. A count above MAX_COPIES is a perfectly understood request
+    # the printer cannot honour, so the handler answers it in words instead of letting slot
+    # validation turn it into Assist's generic "unexpected error". Coerce, because hassil hands a
+    # spoken digit back as a float ("3" -> 3.0) and a number word as an int.
     slot_schema: ClassVar = {
         probatio.Required(SLOT_TEMPLATE): cv.string,
         probatio.Optional(SLOT_TEXT): cv.string,
+        probatio.Optional(SLOT_COPIES): probatio.All(
+            probatio.Coerce(int), probatio.Range(min=MIN_COPIES)
+        ),
     }
 
     async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
@@ -493,6 +518,9 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
         slots = self.async_validate_slots(intent_obj.slots)
         spoken_template: str = slots[SLOT_TEMPLATE]["value"]
         text: str | None = slots.get(SLOT_TEXT, {}).get("value")
+        copies: int = slots.get(SLOT_COPIES, {}).get("value", MIN_COPIES)
+        if copies > MAX_COPIES:
+            return self._error(response, speech["too_many_copies"].format(max_copies=MAX_COPIES))
 
         try:
             coordinator = resolve_coordinator(hass, None)
@@ -517,8 +545,8 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
         # text recovered while resolving the template, but never clobber an explicit text slot.
         text = text or recovered_text
 
-        # A spoken print has no per-call dry_run (the sentence grammar carries only template and
-        # text), so the choice lives on the config entry. labelito still renders and validates a
+        # A spoken print has no per-call dry_run (the sentence grammar carries only template, text
+        # and copies), so the choice lives on the config entry. labelito still renders and validates a
         # dry run, so a template miss or a missing required field is reported exactly as it would
         # be for a real print — only the tape is spared. ``config_entry`` is typed optional on the
         # coordinator base class; with none to read, the default (print for real) applies.
@@ -529,7 +557,7 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
         request: dict[str, Any] = {
             ATTR_TEMPLATE: template["name"],
             ATTR_FIELDS: {},
-            ATTR_COPIES: 1,
+            ATTR_COPIES: copies,
             ATTR_DRY_RUN: dry_run,
             ATTR_LANGUAGE: language,
         }
@@ -550,9 +578,12 @@ class LabelitoPrintIntentHandler(intent.IntentHandler):
                 return self._error(response, speech["needs_text"].format(template=template["name"]))
             return self._error(response, speech["failed"].format(reason=err))
 
+        labels = speech["label_one" if copies == MIN_COPIES else "label_many"].format(
+            template=template["name"], copies=copies
+        )
         prefix = "dry_run" if dry_run else "printed"
         key = f"{prefix}_text" if text else prefix
-        response.async_set_speech(speech[key].format(template=template["name"], text=text))
+        response.async_set_speech(speech[key].format(labels=labels, text=text))
         return response
 
     @staticmethod

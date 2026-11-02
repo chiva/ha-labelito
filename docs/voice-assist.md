@@ -73,11 +73,32 @@ Reload Home Assistant (or restart), then say things like:
 
 - "print a pantry label for tomato soup"
 - "make a freezer-dated label that says lasagna"
+- "print three pantry labels for tomato soup"
 - "imprime una etiqueta de pantry para sopa de tomate"
+- "saca etiqueta del congelador que ponga lasaña"
+- "hazme otra etiqueta de la despensa con el texto arroz"
+- "imprime dos etiquetas de congelador para lasaña"
+- "saca tres copias de la etiqueta de hoy"
+
+The Spanish sentence is deliberately loose, because that is how people talk to it:
+
+| Part | Accepted |
+| --- | --- |
+| Verb | *imprime*, *imprímeme*, *haz*, *hazme*, *saca*, *sácame* (also unaccented, as speech-to-text often spells them) |
+| Article or count | *una*, *la*, *otra*, none — or a count: *dos etiquetas*, *3 etiquetas*, *tres copias de la etiqueta* |
+| Before the name | *de*, *del*, *de la*, or none |
+| Before the text | *para*, *que diga*, *que ponga*, *con el texto* |
 
 The spoken template name is matched against the live catalog, the free-form text fills the
 template's first required field, and the reply — and the printed label's language — follow the
 language you spoke in.
+
+A count may be spoken as a digit or a word in the language you speak (*dos*, *veintiuna*, *ten*)
+and prints that many identical copies; without one you get a single label. labelito prints at
+most 10 copies per request. The grammar still recognizes larger counts (up to 100) on purpose, so
+*"imprime veinte etiquetas de hoy"* is answered with the limit instead of Assist's generic "I
+didn't understand". Numbered batches (`seq_count`) are not exposed by voice: use the
+`labelito.print` action for those.
 
 ## Aliases: the other way you say a name
 
@@ -199,7 +220,7 @@ tape.
 - **Spanish free-text falls back to handler-side recovery** (see below) for any name the generated
   list does not cover — a mis-heard one, or one added since the last refresh. English never needed
   the recovery.
-- **A template name containing a connector word** (*para* / *for* / *que diga* / *that says*)
+- **A template name containing a connector word** (*para* / *que diga* / *que ponga* / *con el texto* / *for* / *that says*)
   loses its tail to the dictated text *without* the generated list. Spoken alone it is fine — the
   handler matches a full name exactly before it tries splitting — but *"haz una etiqueta de regalo
   para navidad para juan"* arrives as one slot that matches no name exactly, so recovery splits at
@@ -277,11 +298,11 @@ into `template`:
   (`print [a] {template} label [for] {text}`), so the wildcard can only capture the template name
   and `text` is extracted cleanly.
 - Spanish has no natural trailing anchor — the noun *etiqueta* comes **before** the template
-  (`imprime una etiqueta [de] {template}`), so the no-text sentence swallows the whole phrase and
+  (`imprime [una] etiqueta [de] {template}`), so the no-text sentence swallows the whole phrase and
   `text` is never set. Spoken *"imprime una etiqueta de pantry para sopa de tomate"* arrives as
   `template="pantry para sopa de tomate"`.
 
-The connectors *para* / *que diga* can't fix this at the grammar layer: they only appear in the
+The connectors (*para*, *que diga*, *que ponga*, *con el texto*) can't fix this at the grammar layer: they only appear in the
 with-text sentence, and any artificial trailing anchor added to the no-text sentence would make it
 mandatory (breaking the bare *"imprime una etiqueta de pantry"*). So the recovery lives in the
 handler: `_split_template_and_text` (in `intents.py`) splits the `template` slot at the **first
