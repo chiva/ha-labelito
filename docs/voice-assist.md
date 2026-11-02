@@ -92,9 +92,14 @@ The Spanish sentence is deliberately loose, because that is how people talk to i
 ### Spanish examples
 
 Each row is what you say and what gets printed, for a catalog with `congelador`, `nevera`,
-`despensa`, `fecha` (alias *hoy*) and `meal-prep` (alias *comida preparada*). The table is not
-just illustration: `tests/test_voice_sentences.py` reads it from this file and checks every row
-against both grammars, the generated list and the wildcard fallback.
+`despensa`, `fecha` (alias *hoy*) and `meal-prep` (alias *comida preparada*). Every one of those
+takes a single required text field, which is what the dictated text fills, except `fecha`, which
+takes none. That is why the `fecha` rows carry no text. Asking for a template that needs text
+without saying any gets the *"Necesito el texto…"* prompt instead of a label.
+
+The table is not just illustration: `tests/test_voice_sentences.py` reads it from this file and
+checks every row against both grammars, the generated list and the wildcard fallback, and checks
+that each row's text has a field to fill.
 
 <!-- es-examples:start -->
 | You say | Template | Copies | Text |

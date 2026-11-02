@@ -35,6 +35,7 @@ from custom_components.labelito.intents import (
     CONNECTOR_PHRASES,
     SPOKEN_CONNECTORS,
     _split_template_and_text,
+    _text_field_name,
 )
 from custom_components.labelito.voice_sentences import (
     _CATALOG_TO_DISK,
@@ -1069,11 +1070,22 @@ VOICE_DOC = REPO_ROOT / "docs" / "voice-assist.md"
 DOC_EXAMPLES_BLOCK = "es-examples"
 DOC_UNRECOGNIZED_BLOCK = "es-unrecognized"
 DOC_NO_TEXT = "—"
+DOC_SEPARATOR_CELLS = {"---"}
+
+
+def _no_text_template(name: str, aliases: list[str]) -> dict[str, Any]:
+    template = _template(name, aliases)
+    template["fields"] = {"required": [], "optional": []}
+    return template
+
+
+# The catalog the docs describe: every template takes one required text field except `fecha`,
+# which takes none. Kept in step with that sentence in docs/voice-assist.md.
 DOC_CATALOG = [
     _template("congelador"),
     _template("nevera"),
     _template("despensa"),
-    _template("fecha", ["hoy"]),
+    _no_text_template("fecha", ["hoy"]),
     _template("meal-prep", ["comida preparada"]),
 ]
 
@@ -1086,11 +1098,26 @@ def _doc_block(name: str) -> list[str]:
 
 
 def _doc_examples() -> list[tuple[str, str, int, str | None]]:
+    """Every table row in the block, header and separator excepted. Anything else fails loudly.
+
+    A row in an unexpected shape is an error rather than a skip: skipping would leave that example
+    untested while the count guard still passes on the rest.
+    """
+    table = [
+        line.strip() for line in _doc_block(DOC_EXAMPLES_BLOCK) if line.strip().startswith("|")
+    ]
+    header, separator, *body = table
+    assert "You say" in header, header
+    assert {cell.strip() for cell in separator.strip("|").split("|")} == DOC_SEPARATOR_CELLS
     rows = []
-    for line in _doc_block(DOC_EXAMPLES_BLOCK):
-        if not line.startswith("| *"):
-            continue  # header and separator rows
-        said, template, copies, text = (cell.strip() for cell in line.strip("|").split("|"))
+    for line in body:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        assert len(cells) == 4, f"expected 4 cells: {line!r}"
+        said, template, copies, text = cells
+        assert said.startswith("*") and said.endswith("*"), f"utterance not in italics: {line!r}"
+        assert template.startswith("`") and template.endswith("`"), (
+            f"template not in code: {line!r}"
+        )
         rows.append(
             (
                 said.strip("*"),
@@ -1144,6 +1171,23 @@ def test_a_documented_example_resolves_with_the_wildcard_alone(
     assert resolved["name"] == template
     assert slots.get("copies", MIN_COPIES) == copies
     assert (slots.get("text") or recovered_text) == text
+
+
+@pytest.mark.parametrize(("utterance", "template", "copies", "text"), _doc_examples())
+def test_a_documented_print_result_is_consistent_with_the_catalog(
+    utterance: str, template: str, copies: int, text: str | None
+) -> None:
+    """The row's text has somewhere to go, and a row without text names a template needing none.
+
+    Recognition alone does not prove the print result: dictated text for a template with no field
+    would be dropped, and a no-text row for a template with a required field would be answered
+    with the needs-text prompt instead of a label.
+    """
+    entry = next(entry for entry in DOC_CATALOG if entry["name"] == template)
+    if text is None:
+        assert entry["fields"]["required"] == [], utterance
+    else:
+        assert _text_field_name(entry) is not None, utterance
 
 
 @pytest.mark.parametrize("utterance", _doc_unrecognized())
