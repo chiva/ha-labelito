@@ -89,6 +89,60 @@ The Spanish sentence is deliberately loose, because that is how people talk to i
 | Before the name | *de*, *del*, *de la*, or none |
 | Before the text | *para*, *que diga*, *que ponga*, *con el texto* |
 
+### Spanish examples
+
+Each row is what you say and what gets printed, for a catalog with `congelador`, `nevera`,
+`despensa`, `fecha` (alias *hoy*) and `meal-prep` (alias *comida preparada*). Every one of those
+takes a single required text field, which is what the dictated text fills, except `fecha`, which
+takes none. That is why the `fecha` rows carry no text. Asking for a template that needs text
+without saying any gets the *"Necesito el texto…"* prompt instead of a label.
+
+The table is not just illustration: `tests/test_voice_sentences.py` reads it from this file and
+checks every row against both grammars, the generated list and the wildcard fallback, and checks
+that each row's text has a field to fill.
+
+<!-- es-examples:start -->
+| You say | Template | Copies | Text |
+| --- | --- | --- | --- |
+| *imprime una etiqueta de congelador para lasaña* | `congelador` | 1 | lasaña |
+| *haz una etiqueta de nevera que diga yogur natural* | `nevera` | 1 | yogur natural |
+| *saca una etiqueta de despensa que ponga arroz* | `despensa` | 1 | arroz |
+| *hazme una etiqueta de nevera con el texto leche* | `nevera` | 1 | leche |
+| *sácame una etiqueta de hoy* | `fecha` | 1 | — |
+| *imprímeme la etiqueta de hoy* | `fecha` | 1 | — |
+| *sacame etiqueta de congelador para pan* | `congelador` | 1 | pan |
+| *imprime etiqueta congelador para croquetas* | `congelador` | 1 | croquetas |
+| *saca la etiqueta del congelador para sopa de pescado* | `congelador` | 1 | sopa de pescado |
+| *hazme otra etiqueta de la despensa con el texto garbanzos* | `despensa` | 1 | garbanzos |
+| *haz una etiqueta de comida preparada para pollo al curry* | `meal-prep` | 1 | pollo al curry |
+| *imprime una etiqueta de congelador para sopa para mañana* | `congelador` | 1 | sopa para mañana |
+| *imprime dos etiquetas de congelador para lasaña* | `congelador` | 2 | lasaña |
+| *saca 3 etiquetas de hoy* | `fecha` | 3 | — |
+| *haz tres copias de la etiqueta de nevera que ponga yogur* | `nevera` | 3 | yogur |
+| *sácame cuatro etiquetas del congelador con el texto caldo* | `congelador` | 4 | caldo |
+| *Saca dos etiquetas del congelador, que ponga lasaña.* | `congelador` | 2 | lasaña |
+| *imprime veinte etiquetas de nevera para leche* | `nevera` | 20 | leche |
+<!-- es-examples:end -->
+
+Worth noting in that table:
+
+- **Only the first connector splits.** *"…para sopa para mañana"* keeps the second *para* in the
+  text.
+- **Speech-to-text punctuation and capitals are ignored**, so the *"Saca…, que ponga lasaña."*
+  row resolves like its plain spelling.
+- **The last row is recognized but not printed.** The count is over the 10-copy limit, so Assist
+  replies *"Como máximo puedo imprimir 10 etiquetas de una vez"* instead of printing.
+
+And what is **not** understood, by design. Each one has a phrasing above that is:
+
+<!-- es-unrecognized:start -->
+- *imprime unas etiquetas de congelador* — *unas* is not a count; say the number.
+- *imprime congelador para lasaña* — the word *etiqueta* is required; it is what tells Assist this
+  is a label request and not some other device.
+- *etiqueta de congelador para lasaña* — a verb is required.
+- *imprime lasaña en una etiqueta de congelador* — the template comes before the text, never after.
+<!-- es-unrecognized:end -->
+
 The spoken template name is matched against the live catalog, the free-form text fills the
 template's first required field, and the reply — and the printed label's language — follow the
 language you spoke in.

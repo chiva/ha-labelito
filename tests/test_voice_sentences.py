@@ -25,11 +25,17 @@ import yaml
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.labelito.const import DOMAIN, INTENT_PRINT, SERVICE_WRITE_VOICE_SENTENCES
+from custom_components.labelito.const import (
+    DOMAIN,
+    INTENT_PRINT,
+    MIN_COPIES,
+    SERVICE_WRITE_VOICE_SENTENCES,
+)
 from custom_components.labelito.intents import (
     CONNECTOR_PHRASES,
     SPOKEN_CONNECTORS,
     _split_template_and_text,
+    _text_field_name,
 )
 from custom_components.labelito.voice_sentences import (
     _CATALOG_TO_DISK,
@@ -1052,6 +1058,144 @@ def test_an_english_count_is_not_swallowed_by_the_singular_wildcard() -> None:
     result = _recognize([wildcard_document("en")], "print 3 pantry labels")
     assert result is not None
     assert _slots(result) == {"copies": 3, "template": "pantry"}
+
+
+# --- the documented Spanish examples ------------------------------------------------------------
+#
+# docs/voice-assist.md promises what each phrasing prints. These tests read that table straight
+# from the markdown, so a grammar change that breaks a documented example fails here instead of
+# leaving the docs quietly wrong.
+
+VOICE_DOC = REPO_ROOT / "docs" / "voice-assist.md"
+DOC_EXAMPLES_BLOCK = "es-examples"
+DOC_UNRECOGNIZED_BLOCK = "es-unrecognized"
+DOC_NO_TEXT = "—"
+DOC_SEPARATOR_CELLS = {"---"}
+
+
+def _no_text_template(name: str, aliases: list[str]) -> dict[str, Any]:
+    template = _template(name, aliases)
+    template["fields"] = {"required": [], "optional": []}
+    return template
+
+
+# The catalog the docs describe: every template takes one required text field except `fecha`,
+# which takes none. Kept in step with that sentence in docs/voice-assist.md.
+DOC_CATALOG = [
+    _template("congelador"),
+    _template("nevera"),
+    _template("despensa"),
+    _no_text_template("fecha", ["hoy"]),
+    _template("meal-prep", ["comida preparada"]),
+]
+
+
+def _doc_block(name: str) -> list[str]:
+    lines = VOICE_DOC.read_text(encoding="utf-8").splitlines()
+    start = lines.index(f"<!-- {name}:start -->")
+    end = lines.index(f"<!-- {name}:end -->")
+    return lines[start + 1 : end]
+
+
+def _doc_examples() -> list[tuple[str, str, int, str | None]]:
+    """Every table row in the block, header and separator excepted. Anything else fails loudly.
+
+    A row in an unexpected shape is an error rather than a skip: skipping would leave that example
+    untested while the count guard still passes on the rest.
+    """
+    table = [
+        line.strip() for line in _doc_block(DOC_EXAMPLES_BLOCK) if line.strip().startswith("|")
+    ]
+    header, separator, *body = table
+    assert "You say" in header, header
+    assert {cell.strip() for cell in separator.strip("|").split("|")} == DOC_SEPARATOR_CELLS
+    rows = []
+    for line in body:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        assert len(cells) == 4, f"expected 4 cells: {line!r}"
+        said, template, copies, text = cells
+        assert said.startswith("*") and said.endswith("*"), f"utterance not in italics: {line!r}"
+        assert template.startswith("`") and template.endswith("`"), (
+            f"template not in code: {line!r}"
+        )
+        rows.append(
+            (
+                said.strip("*"),
+                template.strip("`"),
+                int(copies),
+                None if text == DOC_NO_TEXT else text,
+            )
+        )
+    return rows
+
+
+def _doc_unrecognized() -> list[str]:
+    return [
+        line.removeprefix("- *").split("*", 1)[0]
+        for line in _doc_block(DOC_UNRECOGNIZED_BLOCK)
+        if line.startswith("- *")
+    ]
+
+
+def test_the_documented_example_tables_are_not_empty() -> None:
+    """Guards the parser: a reformatted table must not turn every test below into a no-op."""
+    assert len(_doc_examples()) >= 10
+    assert len(_doc_unrecognized()) >= 3
+
+
+@pytest.mark.parametrize(("utterance", "template", "copies", "text"), _doc_examples())
+def test_a_documented_example_resolves_with_the_generated_list(
+    utterance: str, template: str, copies: int, text: str | None
+) -> None:
+    values, _ = _closed_list_values(DOC_CATALOG)
+    result = _recognize([wildcard_document("es"), closed_list_document("es", values)], utterance)
+    assert result is not None, utterance
+    slots = _slots(result)
+    print(f"[closed_list] {utterance!r} -> {slots}")
+    assert slots["template"] == template
+    assert slots.get("copies", MIN_COPIES) == copies
+    assert slots.get("text") == text
+
+
+@pytest.mark.parametrize(("utterance", "template", "copies", "text"), _doc_examples())
+def test_a_documented_example_resolves_with_the_wildcard_alone(
+    utterance: str, template: str, copies: int, text: str | None
+) -> None:
+    """Without the generated list, the handler's split has to recover what the table promises."""
+    result = _recognize([wildcard_document("es")], utterance)
+    assert result is not None, utterance
+    slots = _slots(result)
+    resolved, recovered_text = _split_template_and_text(slots["template"], DOC_CATALOG)
+    print(f"[wildcard_only] {utterance!r} -> {slots} -> {resolved and resolved['name']!r}")
+    assert resolved is not None, slots
+    assert resolved["name"] == template
+    assert slots.get("copies", MIN_COPIES) == copies
+    assert (slots.get("text") or recovered_text) == text
+
+
+@pytest.mark.parametrize(("utterance", "template", "copies", "text"), _doc_examples())
+def test_a_documented_print_result_is_consistent_with_the_catalog(
+    utterance: str, template: str, copies: int, text: str | None
+) -> None:
+    """The row's text has somewhere to go, and a row without text names a template needing none.
+
+    Recognition alone does not prove the print result: dictated text for a template with no field
+    would be dropped, and a no-text row for a template with a required field would be answered
+    with the needs-text prompt instead of a label.
+    """
+    entry = next(entry for entry in DOC_CATALOG if entry["name"] == template)
+    if text is None:
+        assert entry["fields"]["required"] == [], utterance
+    else:
+        assert _text_field_name(entry) is not None, utterance
+
+
+@pytest.mark.parametrize("utterance", _doc_unrecognized())
+def test_a_documented_non_example_is_not_recognized(utterance: str) -> None:
+    values, _ = _closed_list_values(DOC_CATALOG)
+    result = _recognize([wildcard_document("es"), closed_list_document("es", values)], utterance)
+    print(f"{utterance!r} -> {None if result is None else _slots(result)}")
+    assert result is None
 
 
 def test_every_spanish_grammar_connector_is_a_split_phrase() -> None:
